@@ -1,0 +1,40 @@
+{
+  "name": "electron-chat",
+  "version": "0.1.0",
+  "description": "Electron desktop chat app (ChatGPT-like) with your own UI.",
+  "author": "",
+  "license": "MIT",
+  "type": "module",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron .",
+    "pack": "electron-builder --dir",
+    "dist": "electron-builder"
+  },
+  "build": {
+    "appId": "com.example.electronchat",
+    "productName": "ElectronChat",
+    "files": [
+      "**/*"
+    ],
+    "asar": true,
+    "mac": {
+      "category": "public.app-category.productivity"
+    },
+    "win": {
+      "target": "nsis"
+    },
+    "linux": {
+      "target": "AppImage"
+    }
+  },
+  "devDependencies": {
+    "electron": "^33.0.0",
+    "electron-builder": "^25.0.0"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.5"
+  }
+}
+
