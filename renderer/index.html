@@ -141,6 +141,15 @@
         padding: 10px 14px;
         border-bottom: 1px solid color-mix(in srgb, canvastext 12%, transparent);
         font-weight: 600;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0;
+      }
+      .logo {
+        width: 120px;
+        height: 120px;
+        object-fit: contain;
       }
       .modelRow {
         display: flex;
@@ -168,7 +177,9 @@
   </head>
   <body>
     <div class="sidebar">
-      <div class="topbar">ElectronChat</div>
+      <div class="topbar">
+        <img class="logo" src="./assets/snowflake.png" alt="Snowflake logo">
+      </div>
       <div class="modelRow">
         <label for="model">Model</label>
         <input id="model" placeholder="gpt-4o-mini (used only if PROVIDER=openai)" style="flex:1; padding:6px 8px; border-radius:8px; border:1px solid color-mix(in srgb, canvastext 16%, transparent); background: canvas; color: canvastext;">
