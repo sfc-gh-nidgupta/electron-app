@@ -33,7 +33,17 @@
         box-sizing: border-box;
         display: flex;
         flex-direction: column;
-        gap: 12px;
+        gap: 4px;
+      }
+      .newChatBtn {
+        width: 100%;
+        padding: 10px 12px;
+        border-radius: 10px;
+        border: 1px solid color-mix(in srgb, dodgerblue 28%, transparent);
+        background: color-mix(in srgb, dodgerblue 18%, canvas);
+        color: canvastext;
+        font-weight: 600;
+        cursor: pointer;
       }
       .historyHeader {
         font-size: 12px;
@@ -47,13 +57,29 @@
         overflow: auto;
         min-height: 0;
       }
-      .historyItem {
-        padding: 8px 10px;
-        border-radius: 8px;
-        border: 1px solid color-mix(in srgb, canvastext 12%, transparent);
-        background: color-mix(in srgb, canvastext 4%, canvas);
+      .historyItem { /* container */
+        padding: 10px 10px;
+        border-radius: 10px;
+        border: 1px solid color-mix(in srgb, canvastext 10%, transparent);
+        background: color-mix(in srgb, canvastext 3%, canvas);
         cursor: pointer;
+      }
+      .historyItem .title {
         font-size: 13px;
+        font-weight: 600;
+        margin-bottom: 4px;
+      }
+      .historyItem .meta {
+        display: flex;
+        justify-content: space-between;
+        gap: 8px;
+        font-size: 11px;
+        opacity: .75;
+      }
+      .historyItem .preview {
+        font-size: 12px;
+        opacity: .78;
+        margin-top: 4px;
         line-height: 1.2;
       }
       .historyItem.active {
@@ -72,6 +98,23 @@
         padding: 12px 16px;
         border-bottom: 1px solid color-mix(in srgb, canvastext 12%, transparent);
       }
+      .tabs {
+        display: inline-flex;
+        gap: 6px;
+        padding: 4px;
+        border-radius: 10px;
+        border: 1px solid color-mix(in srgb, canvastext 12%, transparent);
+        background: color-mix(in srgb, canvastext 4%, canvas);
+        font-size: 12px;
+      }
+      .tab {
+        padding: 6px 10px;
+        border-radius: 8px;
+      }
+      .tab.active {
+        background: color-mix(in srgb, dodgerblue 18%, canvas);
+        border: 1px solid color-mix(in srgb, dodgerblue 28%, transparent);
+      }
       .actions {
         display: flex;
         gap: 8px;
@@ -82,26 +125,30 @@
         overflow: auto;
         padding: 16px;
         box-sizing: border-box;
-        background:
-          radial-gradient(1200px 1200px at 80% -10%, color-mix(in srgb, dodgerblue 6%, transparent), transparent),
-          radial-gradient(1200px 1200px at 20% 110%, color-mix(in srgb, mediumseagreen 6%, transparent), transparent);
+        background: color-mix(in srgb, canvastext 3%, canvas);
+        display: flex;
+        flex-direction: column;
       }
       .message {
-        max-width: 820px;
-        margin: 0 auto 12px auto;
+        max-width: 75%;
+        margin: 0 16px 12px 16px;
         padding: 12px 14px;
         border-radius: 10px;
         white-space: pre-wrap;
         line-height: 1.4;
-        box-shadow: 0 1px 0 color-mix(in srgb, canvastext 10%, transparent);
+        border: 1px solid color-mix(in srgb, canvastext 10%, transparent);
+        background: canvas;
+        box-shadow: 0 1px 0 color-mix(in srgb, canvastext 8%, transparent);
       }
       .user {
-        background: color-mix(in srgb, canvastext 8%, canvas);
-        border: 1px solid color-mix(in srgb, canvastext 12%, transparent);
+        background: color-mix(in srgb, canvastext 6%, canvas);
+        border: 1px solid color-mix(in srgb, canvastext 14%, transparent);
+        align-self: flex-end;
       }
       .assistant {
-        background: color-mix(in srgb, dodgerblue 10%, canvas);
-        border: 1px solid color-mix(in srgb, dodgerblue 24%, transparent);
+        background: color-mix(in srgb, canvastext 3%, canvas);
+        border: 1px solid color-mix(in srgb, canvastext 12%, transparent);
+        align-self: flex-start;
       }
       .assistant pre {
         margin: 0;
@@ -115,6 +162,7 @@
         border-top: 1px solid color-mix(in srgb, canvastext 12%, transparent);
         display: flex;
         gap: 8px;
+        background: canvas;
       }
       textarea {
         flex: 1;
@@ -127,7 +175,8 @@
         outline: none;
         background: canvas;
         color: canvastext;
-        max-height: 180px;
+        height: 44px; /* fixed height */
+        overflow-y: auto; /* scroll instead of growing */
       }
       button {
         padding: 10px 14px;
@@ -137,9 +186,15 @@
         color: canvastext;
         cursor: pointer;
       }
+      .hint {
+        font-size: 11px;
+        opacity: .7;
+        padding: 6px 18px 12px 18px;
+        border-top: 1px dashed color-mix(in srgb, canvastext 10%, transparent);
+      }
       .topbar {
-        padding: 10px 14px;
-        border-bottom: 1px solid color-mix(in srgb, canvastext 12%, transparent);
+        padding: 0;
+        border-bottom: none;
         font-weight: 600;
         display: flex;
         align-items: center;
@@ -150,6 +205,7 @@
         width: 120px;
         height: 120px;
         object-fit: contain;
+        display: block; /* remove baseline gap */
       }
       .modelRow {
         display: flex;
@@ -180,22 +236,15 @@
       <div class="topbar">
         <img class="logo" src="./assets/snowflake.png" alt="Snowflake logo">
       </div>
-      <div class="modelRow">
-        <label for="model">Model</label>
-        <input id="model" placeholder="gpt-4o-mini (used only if PROVIDER=openai)" style="flex:1; padding:6px 8px; border-radius:8px; border:1px solid color-mix(in srgb, canvastext 16%, transparent); background: canvas; color: canvastext;">
-      </div>
-      <div style="font-size:12px; opacity:.8;">
-        Default provider: shell. To use OpenAI, set PROVIDER=openai and OPENAI_API_KEY in .env
-      </div>
+      <button id="newChatSidebar" class="newChatBtn">+ New Chat</button>
       <div class="historyHeader">Chats</div>
       <div id="history" class="historyList"></div>
     </div>
     <div class="main">
       <div class="mainHeader">
-        <div style="font-weight:600;">Shell Chat</div>
+        <div style="font-weight:600;">Chat</div>
         <div class="actions">
           <div id="runIndicator" class="spinner" style="display:none;"></div>
-          <button id="clear" class="btn">New Chat</button>
         </div>
       </div>
       <div class="messages" id="messages"></div>
@@ -203,6 +252,7 @@
         <textarea id="input" rows="2" placeholder="Type a shell command and press Enter..."></textarea>
         <button id="send">Send</button>
       </div>
+      <div class="hint">Press Enter to send • Shift + Enter for a new line</div>
       <div class="error" id="error"></div>
     </div>
     <script src="./renderer.js"></script>

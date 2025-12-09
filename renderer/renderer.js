@@ -6,6 +6,7 @@ const modelEl = document.getElementById('model');
 const clearBtn = document.getElementById('clear');
 const runIndicatorEl = document.getElementById('runIndicator');
 const historyEl = document.getElementById('history');
+const newChatSidebarBtn = document.getElementById('newChatSidebar');
 
 const STORAGE_KEY = 'electronChat.sessions.v1';
 let sessions = [];
@@ -36,7 +37,8 @@ function saveSessions() {
 
 function createSession() {
   const id = uid();
-  const session = { id, title: 'New chat', createdAt: Date.now(), messages: [] };
+  const now = Date.now();
+  const session = { id, title: 'New chat', createdAt: now, updatedAt: now, messages: [] };
   sessions.unshift(session);
   currentSessionId = id;
   conversation.splice(0, conversation.length);
@@ -50,6 +52,9 @@ function ensureSession() {
   if (!sessions.length) {
     createSession();
   } else {
+    // ensure updatedAt exists and sort by it
+    sessions.forEach(s => { if (!s.updatedAt) s.updatedAt = s.createdAt || Date.now(); });
+    sessions.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
     currentSessionId = sessions[0].id;
     conversation.splice(0, conversation.length, ...sessions[0].messages);
   }
@@ -82,8 +87,28 @@ function renderHistory() {
   for (const s of sessions) {
     const item = document.createElement('div');
     item.className = 'historyItem' + (s.id === currentSessionId ? ' active' : '');
-    item.title = new Date(s.createdAt).toLocaleString();
-    item.textContent = s.title || 'Untitled';
+    item.title = new Date(s.updatedAt || s.createdAt).toLocaleString();
+
+    const title = document.createElement('div');
+    title.className = 'title';
+    title.textContent = s.title || 'Untitled';
+
+    const meta = document.createElement('div');
+    meta.className = 'meta';
+    const time = document.createElement('span');
+    time.textContent = timeAgo(s.updatedAt || s.createdAt);
+    meta.appendChild(document.createElement('span')).textContent = ''; // spacer
+    meta.appendChild(time);
+
+    const preview = document.createElement('div');
+    preview.className = 'preview';
+    const last = (s.messages || []).slice().reverse().find(m => m?.role === 'user');
+    preview.textContent = last?.content ? truncate(last.content, 64) : '';
+
+    item.appendChild(title);
+    item.appendChild(meta);
+    if (preview.textContent) item.appendChild(preview);
+
     item.addEventListener('click', () => {
       currentSessionId = s.id;
       conversation.splice(0, conversation.length, ...s.messages);
@@ -109,19 +134,22 @@ async function send() {
     if (!session.title || session.title === 'New chat') {
       session.title = text.slice(0, 40) + (text.length > 40 ? '…' : '');
     }
+    session.updatedAt = Date.now();
+    sessions.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
     saveSessions();
     renderHistory();
   }
   render();
 
   try {
-    const model = modelEl.value.trim() || undefined;
+    const model = modelEl ? (modelEl.value.trim() || undefined) : undefined;
     const result = await window.api.sendChat(conversation, model);
     const content = result?.content ?? '';
     conversation.push({ role: 'assistant', content });
     const s2 = getCurrentSession();
     if (s2) {
       s2.messages = [...conversation];
+      s2.updatedAt = Date.now();
       saveSessions();
     }
   } catch (err) {
@@ -152,13 +180,6 @@ function setRunning(running) {
   }
 }
 
-function autosize() {
-  inputEl.style.height = 'auto';
-  inputEl.style.height = Math.min(inputEl.scrollHeight, 180) + 'px';
-}
-inputEl.addEventListener('input', autosize);
-autosize();
-
 function clearChat() {
   createSession();
   errorEl.textContent = '';
@@ -166,10 +187,30 @@ function clearChat() {
 if (clearBtn) {
   clearBtn.addEventListener('click', clearChat);
 }
+if (newChatSidebarBtn) {
+  newChatSidebarBtn.addEventListener('click', createSession);
+}
 
 ensureSession();
 renderHistory();
 render();
 inputEl.focus();
+
+function truncate(s, n) {
+  if (!s) return '';
+  return s.length > n ? s.slice(0, n - 1) + '…' : s;
+}
+
+function timeAgo(ts) {
+  const diff = Date.now() - (ts || Date.now());
+  const sec = Math.round(diff / 1000);
+  if (sec < 60) return sec + 's ago';
+  const min = Math.round(sec / 60);
+  if (min < 60) return min + 'm ago';
+  const hrs = Math.round(min / 60);
+  if (hrs < 24) return hrs + 'h ago';
+  const days = Math.round(hrs / 24);
+  return days + 'd ago';
+}
 
 

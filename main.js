@@ -2,8 +2,9 @@ import { app, BrowserWindow, ipcMain, shell } from 'electron';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import 'dotenv/config';
-import { chatWithOpenAI } from './providers/openai.js';
 import { chatWithShell } from './providers/shell.js';
+import { chatWithOpenAI } from './providers/openai.js';
+import { chatWithSnowflake } from './providers/snowflake.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -72,6 +73,9 @@ ipcMain.handle('chat:send', async (_event, payload) => {
   const provider = (process.env.PROVIDER || 'shell').toLowerCase();
   if (provider === 'shell') {
     return await chatWithShell(messages || []);
+  }
+  if (provider === 'snow' || provider === 'snowflake') {
+    return await chatWithSnowflake(messages || [], model);
   }
   return await chatWithOpenAI(messages || [], model);
 });
