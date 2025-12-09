@@ -5,30 +5,41 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>ElectronChat</title>
     <style>
-      :root { color-scheme: light dark; }
+      :root {
+        color-scheme: light;
+        --bg: #ffffff;
+        --fg: #0b0d12;
+        --accent: dodgerblue;
+      }
+      :root[data-theme="dark"] {
+        color-scheme: dark;
+        --bg: #0c0f13;
+        --fg: #e6e6e6;
+        --accent: #3ea6ff;
+      }
       body {
         margin: 0;
         font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
         display: flex;
         height: 100vh;
-        background: canvas;
-        color: canvastext;
+        background: var(--bg);
+        color: var(--fg);
       }
       .btn {
         padding: 8px 12px;
         border-radius: 10px;
-        border: 1px solid color-mix(in srgb, canvastext 16%, transparent);
-        background: color-mix(in srgb, canvastext 6%, canvas);
-        color: canvastext;
+        border: 1px solid color-mix(in srgb, var(--fg) 16%, transparent);
+        background: color-mix(in srgb, var(--fg) 6%, var(--bg));
+        color: var(--fg);
         cursor: pointer;
       }
       .btn.secondary {
-        background: color-mix(in srgb, dodgerblue 16%, canvas);
-        border-color: color-mix(in srgb, dodgerblue 28%, transparent);
+        background: color-mix(in srgb, var(--accent) 16%, var(--bg));
+        border-color: color-mix(in srgb, var(--accent) 28%, transparent);
       }
       .sidebar {
         width: 240px;
-        border-right: 1px solid color-mix(in srgb, canvastext 12%, transparent);
+        border-right: 1px solid color-mix(in srgb, var(--fg) 12%, transparent);
         padding: 12px;
         box-sizing: border-box;
         display: flex;
@@ -39,16 +50,41 @@
         width: 100%;
         padding: 10px 12px;
         border-radius: 10px;
-        border: 1px solid color-mix(in srgb, dodgerblue 28%, transparent);
-        background: color-mix(in srgb, dodgerblue 18%, canvas);
-        color: canvastext;
+        border: 1px solid color-mix(in srgb, var(--accent) 28%, transparent);
+        background: color-mix(in srgb, var(--accent) 18%, var(--bg));
+        color: var(--fg);
         font-weight: 600;
         cursor: pointer;
       }
       .historyHeader {
         font-size: 12px;
-        opacity: .7;
-        padding: 0 2px;
+        opacity: .9;
+        padding: 6px 6px;
+        border-radius: 8px;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        user-select: none;
+      }
+      .historyHeader.clickable:hover {
+        background: color-mix(in srgb, var(--fg) 6%, var(--bg));
+        cursor: pointer;
+      }
+      .caret {
+        display: inline-block;
+        width: 0;
+        height: 0;
+        border-top: 6px solid transparent;
+        border-bottom: 6px solid transparent;
+        border-left: 6px solid color-mix(in srgb, var(--fg) 70%, transparent);
+        transform: rotate(90deg);
+        transition: transform .18s ease;
+      }
+      .historyGroup.collapsed .caret {
+        transform: rotate(0deg);
+      }
+      .historyGroup.collapsed .historyList {
+        display: none;
       }
       .historyList {
         display: flex;
@@ -57,34 +93,49 @@
         overflow: auto;
         min-height: 0;
       }
-      .historyItem { /* container */
-        padding: 10px 10px;
-        border-radius: 10px;
-        border: 1px solid color-mix(in srgb, canvastext 10%, transparent);
-        background: color-mix(in srgb, canvastext 3%, canvas);
+      .historyItem { /* compact single-line row */
+        padding: 6px 8px;
+        border-radius: 8px;
+        border: 1px solid color-mix(in srgb, var(--fg) 10%, transparent);
+        background: color-mix(in srgb, var(--fg) 3%, var(--bg));
         cursor: pointer;
+        font-size: 12px;
+        line-height: 1.2;
+        display: flex;
+        align-items: center;
+        gap: 8px;
       }
       .historyItem .title {
-        font-size: 13px;
-        font-weight: 600;
-        margin-bottom: 4px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        flex: 1;
       }
-      .historyItem .meta {
-        display: flex;
-        justify-content: space-between;
-        gap: 8px;
-        font-size: 11px;
-        opacity: .75;
+      .historyItem .deleteBtn {
+        display: none;
+        width: 22px;
+        height: 22px;
+        padding: 0;
+        border-radius: 6px;
+        border: 1px solid color-mix(in srgb, var(--fg) 16%, transparent);
+        background: color-mix(in srgb, var(--fg) 6%, var(--bg));
+        color: var(--fg);
+        cursor: pointer;
+        align-items: center;
+        justify-content: center;
+        line-height: 0;
       }
-      .historyItem .preview {
-        font-size: 12px;
-        opacity: .78;
-        margin-top: 4px;
-        line-height: 1.2;
+      .historyItem:hover .deleteBtn {
+        display: inline-flex;
+      }
+      .historyItem .deleteBtn svg {
+        width: 14px;
+        height: 14px;
+        display: block;
       }
       .historyItem.active {
-        border-color: color-mix(in srgb, dodgerblue 28%, transparent);
-        background: color-mix(in srgb, dodgerblue 14%, canvas);
+        border-color: color-mix(in srgb, var(--accent) 28%, transparent);
+        background: color-mix(in srgb, var(--accent) 14%, var(--bg));
       }
       .main {
         flex: 1;
@@ -96,15 +147,15 @@
         align-items: center;
         justify-content: space-between;
         padding: 12px 16px;
-        border-bottom: 1px solid color-mix(in srgb, canvastext 12%, transparent);
+        border-bottom: 1px solid color-mix(in srgb, var(--fg) 12%, transparent);
       }
       .tabs {
         display: inline-flex;
         gap: 6px;
         padding: 4px;
         border-radius: 10px;
-        border: 1px solid color-mix(in srgb, canvastext 12%, transparent);
-        background: color-mix(in srgb, canvastext 4%, canvas);
+        border: 1px solid color-mix(in srgb, var(--fg) 12%, transparent);
+        background: color-mix(in srgb, var(--fg) 4%, var(--bg));
         font-size: 12px;
       }
       .tab {
@@ -112,22 +163,109 @@
         border-radius: 8px;
       }
       .tab.active {
-        background: color-mix(in srgb, dodgerblue 18%, canvas);
-        border: 1px solid color-mix(in srgb, dodgerblue 28%, transparent);
+        background: color-mix(in srgb, var(--accent) 18%, var(--bg));
+        border: 1px solid color-mix(in srgb, var(--accent) 28%, transparent);
       }
       .actions {
         display: flex;
         gap: 8px;
         align-items: center;
       }
+      .sidebarFooter {
+        margin-top: auto;
+        padding: 8px 6px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        justify-content: space-between;
+      }
+      .footerLeft {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .homeBtn {
+        height: 28px;
+        border: none;
+        background: transparent;
+        color: var(--fg);
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        gap: 6px;
+      }
+      .homeBtn svg { width: 20px; height: 20px; display: block; }
+      .homeBtn span { font-size: 12px; }
+      .switch {
+        position: relative;
+        width: 44px;
+        height: 24px;
+        cursor: pointer;
+      }
+      .switch input {
+        display: none;
+      }
+      .switch .slider {
+        position: absolute;
+        inset: 0;
+        background: color-mix(in srgb, var(--fg) 16%, var(--bg));
+        border: 1px solid color-mix(in srgb, var(--fg) 28%, transparent);
+        border-radius: 999px;
+        transition: background .2s ease;
+      }
+      .switch .slider::before {
+        content: "";
+        position: absolute;
+        top: 2px;
+        left: 2px;
+        width: 18px;
+        height: 18px;
+        border-radius: 50%;
+        background: var(--bg);
+        border: 1px solid color-mix(in srgb, var(--fg) 28%, transparent);
+        box-shadow: 0 1px 0 color-mix(in srgb, var(--fg) 10%, transparent);
+        transition: transform .2s ease;
+      }
+      .switch input:checked + .slider {
+        background: color-mix(in srgb, var(--accent) 30%, var(--bg));
+        border-color: color-mix(in srgb, var(--accent) 40%, transparent);
+      }
+      .switch input:checked + .slider::before {
+        transform: translateX(20px);
+      }
       .messages {
         flex: 1;
         overflow: auto;
         padding: 16px;
         box-sizing: border-box;
-        background: color-mix(in srgb, canvastext 3%, canvas);
+        background: color-mix(in srgb, var(--fg) 3%, var(--bg));
         display: flex;
         flex-direction: column;
+      }
+      .home {
+        flex: 1;
+        display: none;
+        align-items: center;
+        justify-content: center;
+        flex-direction: column;
+        gap: 16px;
+        padding: 24px;
+        text-align: center;
+      }
+      .home h1 {
+        margin: 0;
+        font-size: 20px;
+      }
+      .home p {
+        margin: 0;
+        opacity: .8;
+        font-size: 13px;
+      }
+      .home .cta {
+        display: flex;
+        gap: 8px;
+        margin-top: 8px;
       }
       .message {
         max-width: 75%;
@@ -136,18 +274,18 @@
         border-radius: 10px;
         white-space: pre-wrap;
         line-height: 1.4;
-        border: 1px solid color-mix(in srgb, canvastext 10%, transparent);
-        background: canvas;
-        box-shadow: 0 1px 0 color-mix(in srgb, canvastext 8%, transparent);
+        border: 1px solid color-mix(in srgb, var(--fg) 10%, transparent);
+        background: var(--bg);
+        box-shadow: 0 1px 0 color-mix(in srgb, var(--fg) 8%, transparent);
       }
       .user {
-        background: color-mix(in srgb, canvastext 6%, canvas);
-        border: 1px solid color-mix(in srgb, canvastext 14%, transparent);
+        background: color-mix(in srgb, var(--fg) 6%, var(--bg));
+        border: 1px solid color-mix(in srgb, var(--fg) 14%, transparent);
         align-self: flex-end;
       }
       .assistant {
-        background: color-mix(in srgb, canvastext 3%, canvas);
-        border: 1px solid color-mix(in srgb, canvastext 12%, transparent);
+        background: color-mix(in srgb, var(--accent) 14%, var(--bg));
+        border: 1px solid color-mix(in srgb, var(--accent) 28%, transparent);
         align-self: flex-start;
       }
       .assistant pre {
@@ -157,40 +295,117 @@
         line-height: 1.5;
         white-space: pre-wrap;
       }
-      .input {
-        padding: 12px 16px;
-        border-top: 1px solid color-mix(in srgb, canvastext 12%, transparent);
+      .attachments {
         display: flex;
         gap: 8px;
-        background: canvas;
+        flex-wrap: wrap;
+        margin-top: 8px;
       }
+      .attachments img {
+        max-width: 180px;
+        max-height: 140px;
+        border-radius: 8px;
+        border: 1px solid color-mix(in srgb, var(--fg) 14%, transparent);
+      }
+      .attachPreview {
+        width: 100%;
+        display: none;
+        gap: 8px;
+        flex-wrap: wrap;
+        margin-bottom: 8px;
+        grid-column: 1 / -1; /* span both columns in input grid */
+      }
+      .attachItem {
+        position: relative;
+        border-radius: 8px;
+        border: 1px solid color-mix(in srgb, var(--fg) 14%, transparent);
+        overflow: hidden;
+      }
+      .attachItem img {
+        display: block;
+        max-width: 140px;
+        max-height: 100px;
+      }
+      .attachRemove {
+        position: absolute;
+        top: 4px;
+        right: 4px;
+        width: 22px;
+        height: 22px;
+        border-radius: 999px;
+        border: 1px solid color-mix(in srgb, var(--fg) 20%, transparent);
+        background: color-mix(in srgb, var(--bg) 80%, var(--fg));
+        color: var(--fg);
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        line-height: 0;
+      }
+      .input {
+        padding: 12px 16px;
+        border-top: 1px solid color-mix(in srgb, var(--fg) 12%, transparent);
+        display: grid;
+        grid-template-columns: 1fr auto; /* inputBox grows, Send stays auto */
+        column-gap: 8px;
+        row-gap: 8px;
+        background: var(--bg);
+        align-items: end;
+      }
+      .inputBox {
+        position: relative;
+        min-width: 0;
+        width: 100%;
+      }
+      .attachBtn {
+        width: 44px;
+        height: 44px;
+        border-radius: 10px;
+        border: none;
+        background: transparent;
+        color: var(--fg);
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        position: absolute;
+        right: 6px;
+        bottom: 6px;
+      }
+      .attachBtn svg { width: 22px; height: 22px; }
       textarea {
-        flex: 1;
+        width: 100%;
         resize: none;
         border-radius: 10px;
-        border: 1px solid color-mix(in srgb, canvastext 16%, transparent);
-        padding: 10px 12px;
+        border: 1px solid color-mix(in srgb, var(--fg) 16%, transparent);
+        padding: 10px 54px 10px 12px; /* space for attach button on the right */
         font-size: 14px;
         line-height: 1.4;
         outline: none;
-        background: canvas;
-        color: canvastext;
+        background: var(--bg);
+        color: var(--fg);
         height: 44px; /* fixed height */
         overflow-y: auto; /* scroll instead of growing */
       }
       button {
         padding: 10px 14px;
         border-radius: 10px;
-        border: 1px solid color-mix(in srgb, canvastext 16%, transparent);
-        background: color-mix(in srgb, dodgerblue 18%, canvas);
-        color: canvastext;
+        border: 1px solid color-mix(in srgb, var(--fg) 16%, transparent);
+        background: color-mix(in srgb, var(--accent) 18%, var(--bg));
+        color: var(--fg);
         cursor: pointer;
+      }
+      #send {
+        height: 44px;
+        padding: 0 16px;
+        position: relative;
+        z-index: 2;
       }
       .hint {
         font-size: 11px;
         opacity: .7;
         padding: 6px 18px 12px 18px;
-        border-top: 1px dashed color-mix(in srgb, canvastext 10%, transparent);
+        border-top: 1px dashed color-mix(in srgb, var(--fg) 10%, transparent);
       }
       .topbar {
         padding: 0;
@@ -237,8 +452,38 @@
         <img class="logo" src="./assets/snowflake.png" alt="Snowflake logo">
       </div>
       <button id="newChatSidebar" class="newChatBtn">+ New Chat</button>
-      <div class="historyHeader">Chats</div>
-      <div id="history" class="historyList"></div>
+      <div class="historyGroup" data-cat="cli">
+        <div class="historyHeader clickable"><span class="caret"></span><span>Command Line</span></div>
+        <div id="history-cli" class="historyList"></div>
+      </div>
+      <div class="historyGroup" data-cat="snow">
+        <div class="historyHeader clickable"><span class="caret"></span><span>Snowflake CLI</span></div>
+        <div id="history-snow" class="historyList"></div>
+      </div>
+      <div class="historyGroup" data-cat="cortex">
+        <div class="historyHeader clickable"><span class="caret"></span><span>Cortex</span></div>
+        <div id="history-cortex" class="historyList"></div>
+      </div>
+      <div class="historyGroup" data-cat="ide">
+        <div class="historyHeader clickable"><span class="caret"></span><span>IDE</span></div>
+        <div id="history-ide" class="historyList"></div>
+      </div>
+      <div class="sidebarFooter">
+        <div class="footerLeft">
+          <label class="switch" title="Toggle theme">
+            <input id="themeSwitch" type="checkbox" aria-label="Toggle theme">
+            <span class="slider"></span>
+          </label>
+          <span style="font-size:12px; opacity:.75;">Theme</span>
+        </div>
+        <button id="homeBtn" class="homeBtn" title="Home" aria-label="Home">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M3 12l9-8 9 8"></path>
+            <path d="M9 21V9h6v12"></path>
+          </svg>
+          <span>Home</span>
+        </button>
+      </div>
     </div>
     <div class="main">
       <div class="mainHeader">
@@ -247,10 +492,23 @@
           <div id="runIndicator" class="spinner" style="display:none;"></div>
         </div>
       </div>
+      <div class="home" id="home">
+        <h1>Welcome</h1>
+        <p>Start a new conversation or continue where you left off.</p>
+        <div class="cta">
+          <button id="homeNew" class="btn secondary">New Chat</button>
+          <button id="homeOpen" class="btn">Open Last Chat</button>
+        </div>
+      </div>
       <div class="messages" id="messages"></div>
-      <div class="input">
-        <textarea id="input" rows="2" placeholder="Type a shell command and press Enter..."></textarea>
+      <div class="input" id="inputRow">
+        <div id="attachPreview" class="attachPreview"></div>
+        <div class="inputBox">
+          <textarea id="input" rows="2" placeholder="Type a shell command and press Enter..."></textarea>
+          <button id="attach" class="attachBtn" title="Attach image" style="display:none;"></button>
+        </div>
         <button id="send">Send</button>
+        <input id="fileInput" type="file" accept="image/*" style="display:none;" multiple>
       </div>
       <div class="hint">Press Enter to send • Shift + Enter for a new line</div>
       <div class="error" id="error"></div>
