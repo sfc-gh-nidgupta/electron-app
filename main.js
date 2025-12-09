@@ -1,5 +1,6 @@
 import { app, BrowserWindow, ipcMain, shell } from 'electron';
 import { join, dirname } from 'path';
+import { mkdir, writeFile } from 'fs/promises';
 import { fileURLToPath } from 'url';
 import 'dotenv/config';
 import { chatWithShell } from './providers/shell.js';
@@ -10,6 +11,10 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 let mainWindow;
+
+function getProvider() {
+  return (process.env.PROVIDER || 'shell').toLowerCase();
+}
 
 function createMainWindow() {
   mainWindow = new BrowserWindow({
@@ -70,7 +75,7 @@ app.on('window-all-closed', () => {
 
 ipcMain.handle('chat:send', async (_event, payload) => {
   const { messages, model } = payload || {};
-  const provider = (process.env.PROVIDER || 'shell').toLowerCase();
+  const provider = getProvider();
   if (provider === 'shell') {
     return await chatWithShell(messages || []);
   }
@@ -78,6 +83,27 @@ ipcMain.handle('chat:send', async (_event, payload) => {
     return await chatWithSnowflake(messages || [], model);
   }
   return await chatWithOpenAI(messages || [], model);
+});
+
+ipcMain.handle('app:getProvider', async () => {
+  return { provider: getProvider() };
+});
+
+ipcMain.handle('fs:saveImage', async (_event, payload) => {
+  const { data, ext } = payload || {};
+  if (!data) throw new Error('No image data provided');
+  const buffer = Buffer.isBuffer(data) ? data : Buffer.from(data);
+  const safeExt = (ext && String(ext).toLowerCase().includes('png')) ? 'png'
+    : (ext && String(ext).toLowerCase().includes('jpg')) ? 'jpg'
+    : (ext && String(ext).toLowerCase().includes('jpeg')) ? 'jpeg'
+    : (ext && String(ext).toLowerCase().includes('webp')) ? 'webp'
+    : 'png';
+  const baseDir = join(app.getPath('userData'), 'attachments');
+  await mkdir(baseDir, { recursive: true });
+  const filename = `img_${Date.now()}_${Math.random().toString(36).slice(2,8)}.${safeExt}`;
+  const filePath = join(baseDir, filename);
+  await writeFile(filePath, buffer);
+  return { path: filePath };
 });
 
 
