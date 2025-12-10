@@ -1,6 +1,6 @@
 const messagesEl = document.getElementById('messages');
 const inputEl = document.getElementById('input');
-const sendBtn = document.getElementById('send');
+const sendBtn = document.getElementById('sendIcon') || document.getElementById('send');
 const errorEl = document.getElementById('error');
 const modelEl = document.getElementById('model');
 const clearBtn = document.getElementById('clear');
@@ -19,6 +19,7 @@ const inputRowEl = document.getElementById('inputRow');
 const homeNewBtn = document.getElementById('homeNew');
 const homeOpenBtn = document.getElementById('homeOpen');
 const homeBtn = document.getElementById('homeBtn');
+const micBtn = document.getElementById('mic');
 
 const STORAGE_KEY = 'electronChat.sessions.v1';
 let sessions = [];
@@ -223,12 +224,13 @@ function renderHistory() {
 
 async function send() {
   const text = inputEl.value.trim();
-  if (!text) return;
+  const hasText = text.length > 0;
+  if (!hasText && pendingAttachments.length === 0) return;
   inputEl.value = '';
   errorEl.textContent = '';
   setRunning(true);
 
-  conversation.push({ role: 'user', content: text });
+  conversation.push({ role: 'user', content: hasText ? text : '' });
   if (pendingAttachments.length) {
     conversation[conversation.length - 1].attachments = pendingAttachments.slice();
   }
@@ -236,7 +238,7 @@ async function send() {
   if (session) {
     session.messages = [...conversation];
     if (!session.title || session.title === 'New chat') {
-      const base = text || (pendingAttachments[0]?.name || 'New chat');
+      const base = hasText ? text : (pendingAttachments[0]?.name || 'New chat');
       session.title = base.slice(0, 40) + (base.length > 40 ? '…' : '');
     }
     if (!session.category) session.category = defaultCategory;
@@ -322,6 +324,104 @@ if (attachBtn && fileInputEl) {
     const files = Array.from(fileInputEl.files || []);
     await handleFilesAttach(files);
     fileInputEl.value = '';
+  });
+}
+
+// Voice record + transcribe
+let mediaRecorder = null;
+let recordedChunks = [];
+let localASRPipeline = null;
+async function ensureLocalASR() {
+  if (localASRPipeline) return localASRPipeline;
+  // Try global (loaded via script tag)
+  let pipelineFn = (window.transformers && window.transformers.pipeline) ? window.transformers.pipeline : null;
+  // Fallback: dynamic import from CDN if global not present (no upload; simple GET)
+  if (!pipelineFn) {
+    try {
+      const mod = await import('https://cdn.jsdelivr.net/npm/@xenova/transformers@2.17.2');
+      pipelineFn = mod.pipeline || (window.transformers && window.transformers.pipeline);
+    } catch (e) {
+      // surface clear message
+      throw new Error('ASR engine not loaded');
+    }
+  }
+  // tiny.en is small and fast; change to tiny/base for multilingual or better quality
+  localASRPipeline = await pipelineFn('automatic-speech-recognition', 'Xenova/whisper-tiny.en');
+  return localASRPipeline;
+}
+
+async function decodeAndResampleToMono16k(arrayBuffer) {
+  const AudioContextCtor = window.AudioContext || window.webkitAudioContext;
+  const audioCtx = new AudioContextCtor();
+  // Safari requires copy of buffer for decodeAudioData sometimes
+  const buf = arrayBuffer.slice(0);
+  const audioBuffer = await audioCtx.decodeAudioData(buf);
+  if (audioBuffer.sampleRate === 16000 && audioBuffer.numberOfChannels === 1) {
+    return audioBuffer.getChannelData(0);
+  }
+  const OfflineCtor = window.OfflineAudioContext || window.webkitOfflineAudioContext;
+  const duration = audioBuffer.duration;
+  const offline = new OfflineCtor(1, Math.ceil(duration * 16000), 16000);
+  const source = offline.createBufferSource();
+  source.buffer = audioBuffer;
+  source.connect(offline.destination);
+  source.start(0);
+  const rendered = await offline.startRendering();
+  return rendered.getChannelData(0);
+}
+if (micBtn) {
+  micBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 1a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10a7 7 0 0 1-14 0"/><path d="M12 19v4"/></svg>';
+  micBtn.style.display = 'inline-flex';
+// Inline send icon SVG
+if (document.getElementById('sendIcon')) {
+  // Match mic/attach icon sizing and stroke
+  document.getElementById('sendIcon').innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5"></path><path d="M5 12l7-7 7 7"></path></svg>';
+}
+  micBtn.addEventListener('click', async () => {
+    try {
+      // Record audio and transcribe locally (no network)
+      if (!mediaRecorder || mediaRecorder.state === 'inactive') {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        recordedChunks = [];
+        const mime = MediaRecorder.isTypeSupported('audio/webm;codecs=opus') ? 'audio/webm;codecs=opus' : 'audio/webm';
+        mediaRecorder = new MediaRecorder(stream, { mimeType: mime });
+        mediaRecorder.ondataavailable = (e) => {
+          if (e.data && e.data.size > 0) recordedChunks.push(e.data);
+        };
+        mediaRecorder.onstop = async () => {
+          try {
+            const blob = new Blob(recordedChunks, { type: 'audio/webm' });
+            const arrayBuffer = await blob.arrayBuffer();
+            const asr = await ensureLocalASR();
+            const mono16k = await decodeAndResampleToMono16k(arrayBuffer);
+            const result = await asr(mono16k, { chunk_length_s: 30, stride_length_s: 5 });
+            if (result?.text) {
+              inputEl.value = result.text;
+              inputEl.focus();
+            } else {
+              errorEl.textContent = 'No speech recognized.';
+            }
+            if (!inputEl.value) {
+              // ensure the UI regains focus if nothing transcribed
+              inputEl.focus();
+            }
+          } catch (err) {
+            errorEl.textContent = err?.message || String(err);
+          } finally {
+            micBtn.classList.remove('recording');
+            // Stop all tracks
+            stream.getTracks().forEach(t => t.stop());
+          }
+        };
+        mediaRecorder.start();
+        micBtn.classList.add('recording');
+      } else if (mediaRecorder.state === 'recording') {
+        mediaRecorder.stop();
+      }
+    } catch (err) {
+      errorEl.textContent = err?.message || String(err);
+      micBtn.classList.remove('recording');
+    }
   });
 }
 

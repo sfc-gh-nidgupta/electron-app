@@ -6,7 +6,8 @@ contextBridge.exposeInMainWorld('api', {
 
 contextBridge.exposeInMainWorld('app', {
 	getProvider: () => ipcRenderer.invoke('app:getProvider'),
-	saveImage: (arrayBuffer, ext) => ipcRenderer.invoke('fs:saveImage', { data: Buffer.from(arrayBuffer), ext })
+	saveImage: (arrayBuffer, ext) => ipcRenderer.invoke('fs:saveImage', { data: Buffer.from(arrayBuffer), ext }),
+	transcribeAudio: (arrayBuffer, mime) => ipcRenderer.invoke('audio:transcribe', { data: Buffer.from(arrayBuffer), mime })
 });
 
 
