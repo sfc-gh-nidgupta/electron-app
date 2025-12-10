@@ -22,7 +22,7 @@ function createMainWindow() {
     height: 750,
     minWidth: 900,
     minHeight: 600,
-    title: 'ElectronChat',
+    title: 'Coco Desktop Assistant',
     webPreferences: {
       preload: join(__dirname, 'preload.cjs'),
       contextIsolation: true,
@@ -104,6 +104,33 @@ ipcMain.handle('fs:saveImage', async (_event, payload) => {
   const filePath = join(baseDir, filename);
   await writeFile(filePath, buffer);
   return { path: filePath };
+});
+
+ipcMain.handle('audio:transcribe', async (_event, payload) => {
+  const { data, mime } = payload || {};
+  if (!data) throw new Error('No audio provided');
+  const apiKey = process.env.OPENAI_API_KEY;
+  if (!apiKey) {
+    throw new Error('Missing OPENAI_API_KEY for transcription');
+  }
+  const form = new FormData();
+  const file = new Blob([Buffer.isBuffer(data) ? data : Buffer.from(data)], { type: mime || 'audio/webm' });
+  // Note: filename needed by API
+  form.append('file', file, 'audio.webm');
+  // Prefer newer lightweight model
+  form.append('model', process.env.OPENAI_TRANSCRIBE_MODEL || 'gpt-4o-mini-transcribe');
+  const response = await fetch('https://api.openai.com/v1/audio/transcriptions', {
+    method: 'POST',
+    headers: { 'Authorization': `Bearer ${apiKey}` },
+    body: form
+  });
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`Transcription failed: ${response.status} ${text}`);
+  }
+  const json = await response.json();
+  const text = json?.text || '';
+  return { text };
 });
 
 

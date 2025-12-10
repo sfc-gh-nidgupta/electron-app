@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>ElectronChat</title>
+    <title>Coco Desktop Assistant</title>
     <style>
       :root {
         color-scheme: light;
@@ -314,6 +314,8 @@
         flex-wrap: wrap;
         margin-bottom: 8px;
         grid-column: 1 / -1; /* span both columns in input grid */
+        max-width: 720px;
+        align-self: center;
       }
       .attachItem {
         position: relative;
@@ -346,16 +348,23 @@
         padding: 12px 16px;
         border-top: 1px solid color-mix(in srgb, var(--fg) 12%, transparent);
         display: grid;
-        grid-template-columns: 1fr auto; /* inputBox grows, Send stays auto */
-        column-gap: 8px;
+        grid-template-columns: 1fr; /* single column; icons live inside inputBox */
         row-gap: 8px;
         background: var(--bg);
         align-items: end;
+        padding-left: 32px;
+        padding-right: 32px;
+        box-sizing: border-box;
+        justify-items: center; /* center inputBox so it doesn't run edge-to-edge */
       }
       .inputBox {
         position: relative;
         min-width: 0;
         width: 100%;
+        max-width: 720px; /* cap width to avoid crossing right boundary */
+        box-sizing: border-box;
+        margin: 0 auto;
+        overflow: hidden; /* keep rounded corners contained */
       }
       .attachBtn {
         width: 44px;
@@ -369,16 +378,54 @@
         justify-content: center;
         cursor: pointer;
         position: absolute;
-        right: 6px;
+        left: 38px; /* tighter spacing next to mic */
         bottom: 6px;
       }
       .attachBtn svg { width: 22px; height: 22px; }
+      .micBtn {
+        width: 44px;
+        height: 44px;
+        border-radius: 10px;
+        border: none;
+        background: transparent;
+        color: var(--fg);
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        position: absolute;
+        left: 6px; /* move to left-most */
+        bottom: 6px;
+      }
+      .micBtn.recording {
+        color: color-mix(in srgb, var(--accent) 60%, var(--fg));
+      }
+      .micBtn svg { width: 22px; height: 22px; }
+      .sendBtn {
+        width: 44px;
+        height: 44px;
+        border-radius: 10px;
+        border: none; /* remove ring */
+        background: transparent; /* remove fill */
+        color: var(--fg); /* arrow color */
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        position: absolute;
+        right: 6px;
+        bottom: 6px;
+      }
+      .sendBtn:disabled { opacity: .5; cursor: default; }
+      .sendBtn svg { width: 22px; height: 22px; display: block; }
       textarea {
         width: 100%;
+        box-sizing: border-box; /* ensure padding/border stay within width */
+        margin: 0;
         resize: none;
         border-radius: 10px;
         border: 1px solid color-mix(in srgb, var(--fg) 16%, transparent);
-        padding: 10px 54px 10px 12px; /* space for attach button on the right */
+        padding: 10px 148px 10px 104px; /* space for send on right, mic+attach on left (reduced gap) */
         font-size: 14px;
         line-height: 1.4;
         outline: none;
@@ -505,14 +552,16 @@
         <div id="attachPreview" class="attachPreview"></div>
         <div class="inputBox">
           <textarea id="input" rows="2" placeholder="Type a shell command and press Enter..."></textarea>
+          <button id="mic" class="micBtn" title="Record voice" style="display:none;"></button>
           <button id="attach" class="attachBtn" title="Attach image" style="display:none;"></button>
+          <button id="sendIcon" class="sendBtn" title="Send"></button>
         </div>
-        <button id="send">Send</button>
         <input id="fileInput" type="file" accept="image/*" style="display:none;" multiple>
       </div>
       <div class="hint">Press Enter to send • Shift + Enter for a new line</div>
       <div class="error" id="error"></div>
     </div>
+    <script src="https://cdn.jsdelivr.net/npm/@xenova/transformers@2.17.2/dist/transformers.min.js"></script>
     <script src="./renderer.js"></script>
   </body>
 </html>
