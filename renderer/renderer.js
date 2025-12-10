@@ -165,6 +165,27 @@ function render() {
       bubble.appendChild(wrap);
     }
     messagesEl.appendChild(bubble);
+    if (m.role === 'assistant') {
+      const copyBtn = document.createElement('button');
+      copyBtn.className = 'copyBtn';
+      copyBtn.type = 'button';
+      copyBtn.title = 'Copy response';
+      copyBtn.setAttribute('aria-label', 'Copy response');
+      copyBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>';
+      copyBtn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        const ok = await (window.app && window.app.copyToClipboard ? window.app.copyToClipboard(m.content || '') : navigator.clipboard?.writeText(m.content || '').then(() => true).catch(() => false));
+        if (ok) {
+          const prev = copyBtn.innerHTML;
+          copyBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6L9 17l-5-5"/></svg>';
+          setTimeout(() => { copyBtn.innerHTML = prev; }, 900);
+        }
+      });
+      const row = document.createElement('div');
+      row.className = 'copyRow';
+      row.appendChild(copyBtn);
+      messagesEl.appendChild(row);
+    }
   }
   messagesEl.scrollTop = messagesEl.scrollHeight;
 }

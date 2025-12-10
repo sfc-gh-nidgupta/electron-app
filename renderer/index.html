@@ -295,6 +295,25 @@
         line-height: 1.5;
         white-space: pre-wrap;
       }
+      .copyRow {
+        display: flex;
+        justify-content: flex-start;
+        margin: 6px 16px 8px 16px; /* align with message bubble left/right margins */
+      }
+      .copyBtn {
+        width: 24px;
+        height: 24px;
+        padding: 0;
+        border-radius: 6px;
+        border: 1px solid color-mix(in srgb, var(--fg) 16%, transparent);
+        background: color-mix(in srgb, var(--fg) 6%, var(--bg));
+        color: var(--fg);
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+      }
+      .copyBtn svg { width: 14px; height: 14px; display: block; }
       .attachments {
         display: flex;
         gap: 8px;
