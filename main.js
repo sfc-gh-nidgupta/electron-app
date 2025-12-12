@@ -26,7 +26,7 @@ function createMainWindow() {
     height: 750,
     minWidth: 900,
     minHeight: 600,
-    title: 'CoCo Bridge',
+    title: 'CoCo Bridge Desktop Assistant',
     webPreferences: {
       preload: join(__dirname, 'preload.cjs'),
       contextIsolation: true,

@@ -14,7 +14,7 @@
   },
   "build": {
     "appId": "com.example.cocobridge",
-    "productName": "CoCo Bridge",
+    "productName": "CoCo Bridge Desktop Assistant",
     "files": [
       "**/*"
     ],

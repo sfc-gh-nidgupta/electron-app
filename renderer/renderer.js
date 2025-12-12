@@ -355,17 +355,62 @@ function renderHistory() {
     const titleEl = document.createElement('span');
     titleEl.className = 'title';
     titleEl.textContent = fullTitle;
-    const delBtn = document.createElement('button');
-    delBtn.className = 'deleteBtn';
-    delBtn.type = 'button';
-    delBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path><path d="M10 11v6M14 11v6"></path><path d="M9 6V4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"></path></svg>';
-    delBtn.title = 'Delete chat';
-    delBtn.addEventListener('click', (e) => {
+    const kebabBtn = document.createElement('button');
+    kebabBtn.className = 'kebabBtn';
+    kebabBtn.type = 'button';
+    kebabBtn.title = 'More';
+    kebabBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="5" r="1.5"></circle><circle cx="12" cy="12" r="1.5"></circle><circle cx="12" cy="19" r="1.5"></circle></svg>';
+    const menu = document.createElement('div');
+    menu.className = 'menu';
+    const renameIt = document.createElement('div');
+    renameIt.className = 'menuItem';
+    renameIt.textContent = 'Rename';
+    const deleteIt = document.createElement('div');
+    deleteIt.className = 'menuItem';
+    deleteIt.textContent = 'Delete';
+    menu.appendChild(renameIt);
+    menu.appendChild(deleteIt);
+    kebabBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      closeMenus();
+      menu.style.display = 'block';
+    });
+    deleteIt.addEventListener('click', (e) => {
       e.stopPropagation();
       deleteSession(s.id);
+      closeMenus();
+    });
+    renameIt.addEventListener('click', (e) => {
+      e.stopPropagation();
+      // Inline rename similar to dblclick
+      const input = document.createElement('input');
+      input.type = 'text';
+      input.value = fullTitle;
+      input.style.width = '100%';
+      input.style.boxSizing = 'border-box';
+      input.style.borderRadius = '6px';
+      input.style.border = '1px solid color-mix(in srgb, var(--fg) 16%, transparent)';
+      input.style.padding = '4px 6px';
+      titleEl.replaceWith(input);
+      input.focus();
+      input.select();
+      const save = () => {
+        const val = input.value.trim() || 'Untitled';
+        s.title = val;
+        s.updatedAt = Date.now();
+        saveSessions();
+        renderHistory();
+      };
+      input.addEventListener('keydown', (ke) => {
+        if (ke.key === 'Enter') save();
+        if (ke.key === 'Escape') renderHistory();
+      });
+      input.addEventListener('blur', save);
+      closeMenus();
     });
     item.appendChild(titleEl);
-    item.appendChild(delBtn);
+    item.appendChild(kebabBtn);
+    item.appendChild(menu);
 
     item.addEventListener('click', () => {
       // Switching sessions: reset per-session websocket state
@@ -442,7 +487,7 @@ async function send() {
 
   try {
     if (isWsProvider()) {
-      // Start streaming without blocking the input UI
+      // Start streaming without blocking the input UI (original behavior)
       sendViaWebSocket().catch(err => {
         errorEl.textContent = err?.message || String(err);
       });
@@ -462,7 +507,6 @@ async function send() {
     errorEl.textContent = err?.message || String(err);
   } finally {
     render();
-    // Re-enable input immediately; WebSocket continues streaming in background
     setRunning(false);
     inputEl.focus();
   }
@@ -509,10 +553,12 @@ function renderMarkdownToHtml(text) {
   src = src.replace(/`([^`]+)`/g, (_, code) => `<code>${escapeHtml(code)}</code>`);
   // Bold: **text**
   src = src.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
-  // Lists: lines starting with "- " → <ul><li>...</li></ul>
+  // Lists:
+  // - "- " bullets → <ul>
+  // - numbered like "1. ", "1) " or "n1 " → <ol>
   const lines = src.split(/\r?\n/);
   const out = [];
-  let inList = false;
+  let listType = null; // 'ul' | 'ol' | null
   let paraBuf = [];
   function flushPara() {
     if (!paraBuf.length) return;
@@ -523,16 +569,33 @@ function renderMarkdownToHtml(text) {
   for (let i = 0; i < lines.length; i++) {
     const raw = lines[i];
     const line = raw;
-    if (/^\s*-\s+/.test(line)) {
+    const ulMatch = /^\s*-\s+(.*)$/.exec(line);
+    const olMatch = /^\s*(?:\d+[.)]|n\d+)\s+(.*)$/.exec(line);
+    if (ulMatch) {
       flushPara();
-      if (!inList) { out.push('<ul>'); inList = true; }
-      out.push('<li>' + line.replace(/^\s*-\s+/, '') + '</li>');
+      if (listType !== 'ul') {
+        if (listType === 'ol') { out.push('</ol>'); }
+        out.push('<ul>');
+        listType = 'ul';
+      }
+      out.push('<li>' + ulMatch[1] + '</li>');
       continue;
     }
-    if (inList) {
-      // End list on first non-list line (including blank)
-      out.push('</ul>');
-      inList = false;
+    if (olMatch) {
+      flushPara();
+      if (listType !== 'ol') {
+        if (listType === 'ul') { out.push('</ul>'); }
+        out.push('<ol>');
+        listType = 'ol';
+      }
+      out.push('<li>' + olMatch[1] + '</li>');
+      continue;
+    }
+    if (listType) {
+      // End any open list on first non-list line (including blank)
+      if (listType === 'ul') out.push('</ul>');
+      if (listType === 'ol') out.push('</ol>');
+      listType = null;
     }
     if (line.trim().length === 0) {
       // Blank line → paragraph break
@@ -541,7 +604,8 @@ function renderMarkdownToHtml(text) {
       paraBuf.push(line);
     }
   }
-  if (inList) out.push('</ul>');
+  if (listType === 'ul') out.push('</ul>');
+  if (listType === 'ol') out.push('</ol>');
   flushPara();
   return out.join('\n');
 }
@@ -863,6 +927,35 @@ async function sendViaWebSocket() {
     let ws;
     let targetUrl = '';
     let queuedInput = '';
+    let finished = false;
+    // Guards to prevent duplicate first chunks
+    let sawEventText = false;
+    let lastChunk = '';
+    let inactivityTimer = null;
+    function finish() {
+      if (finished) return;
+      finished = true;
+      try {
+        // Safety: ensure input is re-enabled immediately upon stream completion
+        setRunning(false);
+        if (inputEl) {
+          inputEl.disabled = false;
+          inputEl.focus();
+        }
+      } catch {}
+      try { resolve(); } catch {}
+    }
+    function bumpInactivity() {
+      if (inactivityTimer) clearTimeout(inactivityTimer);
+      // If no chunks/status arrive for a bit, consider the turn finished
+      inactivityTimer = setTimeout(() => {
+        if (assistantIndex >= 0 && conversation[assistantIndex]) {
+          conversation[assistantIndex].done = true;
+          render();
+        }
+        finish();
+      }, 2000);
+    }
 
     const openSocket = async () => {
       // If we already have an open socket, reuse it (don't recreate session)
@@ -889,10 +982,11 @@ async function sendViaWebSocket() {
                       const d = innerObj.data || {};
                       if (d.type === 'text' && typeof d.content === 'string') {
                         textChunk = d.content;
+                        sawEventText = true;
                       } else if (d.type === 'status') {
                         const sVal = String(d.status || d.content || '').toLowerCase();
-                        if (sVal.includes('thinking')) addEphemeral('thinking');
-                        else if (sVal.includes('completed') || sVal.includes('done')) { addEphemeral('completed'); if (assistantIndex >= 0) { conversation[assistantIndex].done = true; render(); } }
+                      if (sVal.includes('thinking')) addEphemeral('thinking');
+                      else if (sVal.includes('completed') || sVal.includes('done')) { addEphemeral('completed'); if (assistantIndex >= 0) { conversation[assistantIndex].done = true; render(); } finish(); }
                         else {
                           const m = String(d.content || '').match(/^([\w\-]+):\s*running/i);
                           if (m) addEphemeral(m[1]);
@@ -907,13 +1001,18 @@ async function sendViaWebSocket() {
                   }
                 }
               } else if (parsed.type === 'text' && typeof parsed.content === 'string') {
-                textChunk = parsed.content;
+                textChunk = sawEventText ? '' : parsed.content;
               }
             }
           } catch {
             textChunk = typeof data === 'string' ? data : '';
           }
-          if (textChunk) handleTextOnly(textChunk);
+          if (textChunk) {
+            if (textChunk === lastChunk) { bumpInactivity(); return; }
+            lastChunk = textChunk;
+            handleTextOnly(textChunk);
+            bumpInactivity();
+          }
         };
         const lastUser = [...conversation].reverse().find(m => m.role === 'user')?.content || '';
         const payload = { type: 'input', content: lastUser };
@@ -956,6 +1055,7 @@ async function sendViaWebSocket() {
             try { ws.send(JSON.stringify({ type: 'input', content: queuedInput })); queuedInput = ''; } catch (err) { console.error('WS send failed (timeout)', err); }
           }
         }, 2000);
+        bumpInactivity();
       };
       ws.onmessage = (evt) => {
         let data = evt.data;
@@ -980,10 +1080,11 @@ async function sendViaWebSocket() {
                     const d = innerObj.data || {};
                     if (d.type === 'text' && typeof d.content === 'string') {
                       textChunk = d.content;
+                      sawEventText = true;
                     } else if (d.type === 'status') {
                       const sVal = String(d.status || d.content || '').toLowerCase();
                       if (sVal.includes('thinking')) addEphemeral('thinking');
-                      else if (sVal.includes('completed') || sVal.includes('done')) { addEphemeral('completed'); if (assistantIndex >= 0 && conversation[assistantIndex]) { conversation[assistantIndex].done = true; render(); } }
+                      else if (sVal.includes('completed') || sVal.includes('done')) { addEphemeral('completed'); if (assistantIndex >= 0 && conversation[assistantIndex]) { conversation[assistantIndex].done = true; render(); } finish(); }
                       else {
                         const m = String(d.content || '').match(/^([\w\-]+):\s*running/i);
                         if (m) addEphemeral(m[1]);
@@ -999,14 +1100,19 @@ async function sendViaWebSocket() {
                 }
               }
             } else if (parsed.type === 'text' && typeof parsed.content === 'string') {
-              textChunk = parsed.content;
+              textChunk = sawEventText ? '' : parsed.content;
             }
           }
         } catch {
           // Not JSON; treat as raw chunk
           textChunk = typeof data === 'string' ? data : '';
         }
-        if (textChunk) handleTextOnly(textChunk);
+        if (textChunk) {
+          if (textChunk === lastChunk) { bumpInactivity(); return; }
+          lastChunk = textChunk;
+          handleTextOnly(textChunk);
+          bumpInactivity();
+        }
       };
       ws.onerror = (e) => {
         if (!closed) {
@@ -1029,7 +1135,7 @@ async function sendViaWebSocket() {
           conversation[assistantIndex].done = true;
           render();
         }
-        resolve();
+        finish();
       };
     };
 
@@ -1151,6 +1257,11 @@ function initFolders() {
   }
 }
 
+function closeMenus() {
+  const menus = document.querySelectorAll('.menu');
+  menus.forEach(m => { m.style.display = 'none'; });
+}
+
 function loadFoldersState() {
   try {
     const raw = localStorage.getItem(FOLDERS_KEY);
@@ -1232,5 +1343,7 @@ if (homeBtn) {
     showHome();
   });
 }
+// Close kebab menus on outside click
+document.addEventListener('click', () => closeMenus());
 
 
