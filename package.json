@@ -1,5 +1,5 @@
 {
-  "name": "coco-desktop-assistant",
+  "name": "coco-bridge",
   "version": "0.1.0",
   "description": "Electron desktop chat app (ChatGPT-like) with your own UI.",
   "author": "",
@@ -13,8 +13,8 @@
     "dist": "electron-builder"
   },
   "build": {
-    "appId": "com.example.cocodesktopassistant",
-    "productName": "Coco Desktop Assistant",
+    "appId": "com.example.cocobridge",
+    "productName": "CoCo Bridge",
     "files": [
       "**/*"
     ],

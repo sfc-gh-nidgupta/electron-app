@@ -10,6 +10,7 @@ const historySnowEl = document.getElementById('history-snow');
 const historyCortexEl = document.getElementById('history-cortex');
 const historyIdeEl = document.getElementById('history-ide');
 const newChatSidebarBtn = document.getElementById('newChatSidebar');
+const historySearchEl = document.getElementById('historySearch');
 const themeSwitchEl = document.getElementById('themeSwitch');
 const attachBtn = document.getElementById('attach');
 const fileInputEl = document.getElementById('fileInput');
@@ -20,6 +21,8 @@ const homeNewBtn = document.getElementById('homeNew');
 const homeOpenBtn = document.getElementById('homeOpen');
 const homeBtn = document.getElementById('homeBtn');
 const micBtn = document.getElementById('mic');
+const scrollDownBtn = document.getElementById('scrollDown');
+const toastEl = document.getElementById('toast');
 
 const STORAGE_KEY = 'electronChat.sessions.v1';
 let sessions = [];
@@ -54,6 +57,7 @@ const CATEGORY_IDE = 'IDE';
 let defaultCategory = CATEGORY_CLI;
 let selectedCategory = null;
 const FOLDERS_KEY = 'electronChat.folders.v1'; // {cli:true|false, snow:true|false, ...} true = collapsed
+let historySearchQuery = '';
 
 // Theme
 const THEME_KEY = 'electronChat.theme';
@@ -160,13 +164,22 @@ function render() {
     return;
   }
   messagesEl.innerHTML = '';
-  for (const m of conversation) {
+  for (let i = 0; i < conversation.length; i++) {
+    const m = conversation[i];
     const bubble = document.createElement('div');
     bubble.className = `message ${m.role}`;
     if (m.role === 'assistant') {
       const pre = document.createElement('pre');
       pre.textContent = m.content;
       bubble.appendChild(pre);
+      // typing indicator for non-streaming mode
+      // if message is empty and we're running, show dots
+      if (!m.content && isRunning) {
+        const dots = document.createElement('div');
+        dots.className = 'typingDots';
+        dots.innerHTML = '<span></span><span></span><span></span>';
+        bubble.appendChild(dots);
+      }
       const eph = ephemeralByMessage.get(m) || [];
       if (eph.length) {
         const row = document.createElement('div');
@@ -206,27 +219,83 @@ function render() {
       }
       bubble.appendChild(wrap);
     }
+    // Toolbar row (below message) when assistant response completed
+    const toolbar = document.createElement('div');
+    toolbar.className = 'toolbarRow';
+    // Copy
+    const btnCopy = document.createElement('button');
+    btnCopy.className = 'iconBtn';
+    btnCopy.title = 'Copy';
+    btnCopy.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>';
+    btnCopy.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const ok = await (window.app && window.app.copyToClipboard ? window.app.copyToClipboard(m.content || '') : navigator.clipboard?.writeText(m.content || '').then(() => true).catch(() => false));
+      if (ok) showToast('Copied');
+    });
+    // Edit & resend
+    const btnEdit = document.createElement('button');
+    btnEdit.className = 'iconBtn';
+    btnEdit.title = 'Edit & resend';
+    btnEdit.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 1 1 3 3L7 19l-4 1 1-4 12.5-12.5z"></path></svg>';
+    btnEdit.addEventListener('click', (e) => {
+      e.stopPropagation();
+      inputEl.value = m.content || '';
+      inputEl.focus();
+    });
+    // Regenerate
+    const btnRegen = document.createElement('button');
+    btnRegen.className = 'iconBtn';
+    btnRegen.title = 'Regenerate';
+    btnRegen.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-3-6.7"/><polyline points="21 3 21 9 15 9"/></svg>';
+    btnRegen.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const prevUser = findPrevUserContent(i);
+      if (prevUser) {
+        inputEl.value = prevUser;
+        await send();
+      } else {
+        showToast('No previous prompt');
+      }
+    });
+    // Email
+    const btnMail = document.createElement('button');
+    btnMail.className = 'iconBtn';
+    btnMail.title = 'Email';
+    btnMail.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16v16H4z"></path><path d="M22 6l-10 7L2 6"></path></svg>';
+    btnMail.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const subject = encodeURIComponent('CoCo Bridge response');
+      const body = encodeURIComponent(m.content || '');
+      const link = document.createElement('a');
+      link.href = `https://mail.google.com/mail/?view=cm&fs=1&tf=1&to=&su=${subject}&body=${body}`;
+      link.target = '_blank';
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+    });
+    // Thumbs up
+    const btnUp = document.createElement('button');
+    btnUp.className = 'iconBtn thumbUp';
+    btnUp.title = 'Thumbs up';
+    // Clean thumbs-up variant
+    btnUp.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 10v11"></path><path d="M15 10h4a2 2 0 0 1 2 2v1a7 7 0 0 1-7 7h-1a2 2 0 0 1-2-2v-7l4-8a2 2 0 0 1 2 2z"></path></svg>';
+    btnUp.addEventListener('click', (e) => {
+      e.stopPropagation();
+      saveFeedback(m.id || '', true);
+    });
+    // Time label
+    const timeEl = document.createElement('span');
+    timeEl.className = 'msgTime';
+    timeEl.textContent = timeAgo(m.createdAt || Date.now());
+    toolbar.appendChild(btnCopy);
+    toolbar.appendChild(btnEdit);
+    toolbar.appendChild(btnRegen);
+    toolbar.appendChild(btnMail);
+    toolbar.appendChild(btnUp);
+    toolbar.appendChild(timeEl);
     messagesEl.appendChild(bubble);
-    if (m.role === 'assistant') {
-      const copyBtn = document.createElement('button');
-      copyBtn.className = 'copyBtn';
-      copyBtn.type = 'button';
-      copyBtn.title = 'Copy response';
-      copyBtn.setAttribute('aria-label', 'Copy response');
-      copyBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>';
-      copyBtn.addEventListener('click', async (e) => {
-        e.stopPropagation();
-        const ok = await (window.app && window.app.copyToClipboard ? window.app.copyToClipboard(m.content || '') : navigator.clipboard?.writeText(m.content || '').then(() => true).catch(() => false));
-        if (ok) {
-          const prev = copyBtn.innerHTML;
-          copyBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6L9 17l-5-5"/></svg>';
-          setTimeout(() => { copyBtn.innerHTML = prev; }, 900);
-        }
-      });
-      const row = document.createElement('div');
-      row.className = 'copyRow';
-      row.appendChild(copyBtn);
-      messagesEl.appendChild(row);
+    if (m.role === 'assistant' && (m.done || (!isRunning && m.content))) {
+      messagesEl.appendChild(toolbar);
     }
   }
   messagesEl.scrollTop = messagesEl.scrollHeight;
@@ -250,7 +319,10 @@ function showChat() {
 function renderHistory() {
   // clear all containers
   [historyCliEl, historySnowEl, historyCortexEl, historyIdeEl].forEach(c => { if (c) c.innerHTML = ''; });
+  const q = (historySearchQuery || '').toLowerCase();
   for (const s of sessions) {
+    const titleText = (s.title || 'Untitled').toLowerCase();
+    if (q && !titleText.includes(q)) continue;
     const container = getHistoryContainer(s.category || defaultCategory);
     if (!container) continue;
     const item = document.createElement('div');
@@ -258,9 +330,22 @@ function renderHistory() {
     // Full title in tooltip; compact row shows ellipsis
     const fullTitle = s.title || 'Untitled';
     item.title = fullTitle;
-    const titleEl = document.createElement('span');
+    const left = document.createElement('div');
+    left.className = 'left';
+    const titleEl = document.createElement('div');
     titleEl.className = 'title';
     titleEl.textContent = fullTitle;
+    const meta = document.createElement('div');
+    meta.className = 'meta';
+    const badge = document.createElement('span');
+    badge.className = 'badge';
+    badge.textContent = (s.category || defaultCategory);
+    const time = document.createElement('span');
+    time.textContent = timeAgo(s.updatedAt || s.createdAt);
+    meta.appendChild(badge);
+    meta.appendChild(time);
+    left.appendChild(titleEl);
+    left.appendChild(meta);
     const delBtn = document.createElement('button');
     delBtn.className = 'deleteBtn';
     delBtn.type = 'button';
@@ -270,7 +355,7 @@ function renderHistory() {
       e.stopPropagation();
       deleteSession(s.id);
     });
-    item.appendChild(titleEl);
+    item.appendChild(left);
     item.appendChild(delBtn);
 
     item.addEventListener('click', () => {
@@ -282,6 +367,33 @@ function renderHistory() {
       renderHistory();
       render();
       inputEl.focus();
+    });
+    // Inline rename on double click
+    titleEl.addEventListener('dblclick', (e) => {
+      e.stopPropagation();
+      const input = document.createElement('input');
+      input.type = 'text';
+      input.value = fullTitle;
+      input.style.width = '100%';
+      input.style.boxSizing = 'border-box';
+      input.style.borderRadius = '6px';
+      input.style.border = '1px solid color-mix(in srgb, var(--fg) 16%, transparent)';
+      input.style.padding = '4px 6px';
+      titleEl.replaceWith(input);
+      input.focus();
+      input.select();
+      const save = () => {
+        const val = input.value.trim() || 'Untitled';
+        s.title = val;
+        s.updatedAt = Date.now();
+        saveSessions();
+        renderHistory();
+      };
+      input.addEventListener('keydown', (ke) => {
+        if (ke.key === 'Enter') save();
+        if (ke.key === 'Escape') renderHistory();
+      });
+      input.addEventListener('blur', save);
     });
     container.appendChild(item);
   }
@@ -296,6 +408,8 @@ async function send() {
   setRunning(true);
 
   conversation.push({ role: 'user', content: hasText ? text : '' });
+  conversation[conversation.length - 1].id = uid();
+  conversation[conversation.length - 1].createdAt = Date.now();
   if (pendingAttachments.length) {
     conversation[conversation.length - 1].attachments = pendingAttachments.slice();
   }
@@ -327,7 +441,7 @@ async function send() {
       const model = modelEl ? (modelEl.value.trim() || undefined) : undefined;
       const result = await window.api.sendChat(conversation, model);
       const content = result?.content ?? '';
-      conversation.push({ role: 'assistant', content });
+      conversation.push({ role: 'assistant', content, id: uid(), createdAt: Date.now(), done: true });
       const s2 = getCurrentSession();
       if (s2) {
         s2.messages = [...conversation];
@@ -343,6 +457,48 @@ async function send() {
     setRunning(false);
     inputEl.focus();
   }
+}
+
+// Scroll-to-bottom logic
+function isNearBottom() {
+  const threshold = 80;
+  return messagesEl.scrollTop + messagesEl.clientHeight >= messagesEl.scrollHeight - threshold;
+}
+function updateScrollButton() {
+  if (!scrollDownBtn) return;
+  scrollDownBtn.style.display = isNearBottom() ? 'none' : 'inline-flex';
+}
+if (messagesEl && scrollDownBtn) {
+  messagesEl.addEventListener('scroll', updateScrollButton);
+  scrollDownBtn.addEventListener('click', () => {
+    messagesEl.scrollTop = messagesEl.scrollHeight;
+    updateScrollButton();
+  });
+}
+
+// Toast
+function showToast(msg) {
+  if (!toastEl) return;
+  toastEl.textContent = String(msg || '');
+  toastEl.style.display = 'block';
+  setTimeout(() => { toastEl.style.display = 'none'; }, 1800);
+}
+
+function findPrevUserContent(idx) {
+  for (let j = idx - 1; j >= 0; j--) {
+    if (conversation[j]?.role === 'user' && conversation[j]?.content) {
+      return conversation[j].content;
+    }
+  }
+  return null;
+}
+
+function saveFeedback(messageId, isUp) {
+  if (!messageId) return;
+  try {
+    localStorage.setItem('electronChat.feedback.' + messageId, isUp ? 'up' : 'down');
+    showToast(isUp ? 'Thanks for the feedback' : 'Feedback noted');
+  } catch {}
 }
 
 sendBtn.addEventListener('click', send);
@@ -379,6 +535,12 @@ if (newChatSidebarBtn) {
     createSession();
     showChat();
     inputEl.focus();
+  });
+}
+if (historySearchEl) {
+  historySearchEl.addEventListener('input', (e) => {
+    historySearchQuery = (e.target.value || '').trim();
+    renderHistory();
   });
 }
 if (themeSwitchEl) {
@@ -648,7 +810,7 @@ async function sendViaWebSocket() {
         try { console.log('WS reuse open', targetUrl); } catch {}
         // Stream into a fresh assistant bubble and rebind message handler so chunks
         // append to THIS assistant message instead of the first one.
-        assistantIndex = conversation.push({ role: 'assistant', content: '' }) - 1;
+        assistantIndex = conversation.push({ role: 'assistant', content: '', id: uid(), createdAt: Date.now() }) - 1;
         render();
         ws.onmessage = (evt) => {
           let data = evt.data;
@@ -668,7 +830,7 @@ async function sendViaWebSocket() {
                       } else if (d.type === 'status') {
                         const sVal = String(d.status || d.content || '').toLowerCase();
                         if (sVal.includes('thinking')) addEphemeral('thinking');
-                        else if (sVal.includes('completed') || sVal.includes('done')) addEphemeral('completed');
+                        else if (sVal.includes('completed') || sVal.includes('done')) { addEphemeral('completed'); if (assistantIndex >= 0) { conversation[assistantIndex].done = true; render(); } }
                         else {
                           const m = String(d.content || '').match(/^([\w\-]+):\s*running/i);
                           if (m) addEphemeral(m[1]);
@@ -716,7 +878,7 @@ async function sendViaWebSocket() {
       ws.onopen = () => {
         try { console.log('WS open', targetUrl); } catch {}
         // Create a placeholder assistant message to stream into
-        assistantIndex = conversation.push({ role: 'assistant', content: '' }) - 1;
+        assistantIndex = conversation.push({ role: 'assistant', content: '', id: uid(), createdAt: Date.now() }) - 1;
         const s = getCurrentSession();
         if (s) {
           s.messages = [...conversation];
@@ -759,7 +921,7 @@ async function sendViaWebSocket() {
                     } else if (d.type === 'status') {
                       const sVal = String(d.status || d.content || '').toLowerCase();
                       if (sVal.includes('thinking')) addEphemeral('thinking');
-                      else if (sVal.includes('completed') || sVal.includes('done')) addEphemeral('completed');
+                      else if (sVal.includes('completed') || sVal.includes('done')) { addEphemeral('completed'); if (assistantIndex >= 0 && conversation[assistantIndex]) { conversation[assistantIndex].done = true; render(); } }
                       else {
                         const m = String(d.content || '').match(/^([\w\-]+):\s*running/i);
                         if (m) addEphemeral(m[1]);
@@ -800,6 +962,10 @@ async function sendViaWebSocket() {
         if (activeWs === ws) {
           activeWs = null;
           activeWsUrl = '';
+        }
+        if (assistantIndex >= 0 && conversation[assistantIndex]) {
+          conversation[assistantIndex].done = true;
+          render();
         }
         resolve();
       };
