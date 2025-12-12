@@ -340,10 +340,54 @@
         border: 1px solid color-mix(in srgb, var(--fg) 14%, transparent);
         align-self: flex-end;
       }
+      /* Tail notch for user (right) */
+      .user::before,
+      .user::after {
+        content: "";
+        position: absolute;
+        top: 16px;
+        right: -8px;
+        width: 0;
+        height: 0;
+        pointer-events: none;
+      }
+      .user::before {
+        border-top: 8px solid transparent;
+        border-bottom: 8px solid transparent;
+        border-left: 8px solid color-mix(in srgb, var(--fg) 14%, transparent);
+      }
+      .user::after {
+        right: -7px;
+        border-top: 7px solid transparent;
+        border-bottom: 7px solid transparent;
+        border-left: 7px solid color-mix(in srgb, var(--fg) 6%, var(--bg));
+      }
       .assistant {
         background: color-mix(in srgb, var(--accent) 14%, var(--bg));
         border: 1px solid color-mix(in srgb, var(--accent) 28%, transparent);
         align-self: flex-start;
+      }
+      /* Tail notch for assistant (left) */
+      .assistant::before,
+      .assistant::after {
+        content: "";
+        position: absolute;
+        top: 16px;
+        left: -8px;
+        width: 0;
+        height: 0;
+        pointer-events: none;
+      }
+      .assistant::before {
+        border-top: 8px solid transparent;
+        border-bottom: 8px solid transparent;
+        border-right: 8px solid color-mix(in srgb, var(--accent) 28%, transparent);
+      }
+      .assistant::after {
+        left: -7px;
+        border-top: 7px solid transparent;
+        border-bottom: 7px solid transparent;
+        border-right: 7px solid color-mix(in srgb, var(--accent) 14%, var(--bg));
       }
       .assistant pre {
         margin: 0;
