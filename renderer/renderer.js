@@ -9,6 +9,7 @@ const historyCliEl = document.getElementById('history-cli');
 const historySnowEl = document.getElementById('history-snow');
 const historyCortexEl = document.getElementById('history-cortex');
 const historyIdeEl = document.getElementById('history-ide');
+const historyProjectsEl = document.getElementById('history-projects');
 const newChatSidebarBtn = document.getElementById('newChatSidebar');
 const historySearchEl = document.getElementById('historySearch');
 const themeSwitchEl = document.getElementById('themeSwitch');
@@ -54,6 +55,7 @@ const CATEGORY_CLI = 'Command Line';
 const CATEGORY_SNOW = 'Snowflake CLI';
 const CATEGORY_CORTEX = 'Cortex';
 const CATEGORY_IDE = 'IDE';
+const CATEGORY_PROJECTS = 'Projects';
 let defaultCategory = CATEGORY_CLI;
 let selectedCategory = null;
 const FOLDERS_KEY = 'electronChat.folders.v1'; // {cli:true|false, snow:true|false, ...} true = collapsed
@@ -147,6 +149,7 @@ function getHistoryContainer(category) {
     case CATEGORY_SNOW: return historySnowEl;
     case CATEGORY_CORTEX: return historyCortexEl;
     case CATEGORY_IDE: return historyIdeEl;
+    case CATEGORY_PROJECTS: return historyProjectsEl;
     case CATEGORY_CLI:
     default: return historyCliEl;
   }
@@ -156,6 +159,7 @@ function keyFromCategory(category) {
   if (category === CATEGORY_SNOW) return 'snow';
   if (category === CATEGORY_CORTEX) return 'cortex';
   if (category === CATEGORY_IDE) return 'ide';
+  if (category === CATEGORY_PROJECTS) return 'projects';
   return 'cli';
 }
 
@@ -318,7 +322,7 @@ function showChat() {
 
 function renderHistory() {
   // clear all containers
-  [historyCliEl, historySnowEl, historyCortexEl, historyIdeEl].forEach(c => { if (c) c.innerHTML = ''; });
+  [historyCliEl, historySnowEl, historyCortexEl, historyIdeEl, historyProjectsEl].forEach(c => { if (c) c.innerHTML = ''; });
   const q = (historySearchQuery || '').toLowerCase();
   for (const s of sessions) {
     const titleText = (s.title || 'Untitled').toLowerCase();
@@ -1066,6 +1070,7 @@ function initFolders() {
           (cat === 'snow') ? CATEGORY_SNOW :
           (cat === 'cortex') ? CATEGORY_CORTEX :
           (cat === 'ide') ? CATEGORY_IDE :
+          (cat === 'projects') ? CATEGORY_PROJECTS :
           CATEGORY_CLI;
         saveFoldersState(groups);
       });
