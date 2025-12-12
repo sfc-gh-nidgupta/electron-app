@@ -102,6 +102,21 @@
         background: color-mix(in srgb, var(--fg) 6%, var(--bg));
         cursor: pointer;
       }
+      .groupNew {
+        margin-left: auto;
+        width: 22px;
+        height: 22px;
+        padding: 0;
+        border-radius: 6px;
+        border: 1px solid color-mix(in srgb, var(--fg) 16%, transparent);
+        background: color-mix(in srgb, var(--bg) 92%, var(--fg) 4%);
+        color: color-mix(in srgb, var(--fg) 90%, transparent);
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        line-height: 0;
+      }
+      .groupNew svg { width: 14px; height: 14px; display: block; }
       .caret {
         display: inline-block;
         width: 0;
@@ -134,38 +149,15 @@
         font-size: 12px;
         line-height: 1.2;
         display: flex;
-        align-items: flex-start;
-        gap: 8px;
-      }
-      .historyItem .left {
-        display: flex;
         align-items: center;
         gap: 8px;
-        min-width: 0;
-        flex: 1;
-        flex-direction: column;
       }
       .historyItem .title {
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
-        width: 100%;
+        flex: 1;
         font-weight: 600;
-      }
-      .historyItem .meta {
-        display: flex;
-        align-items: center;
-        gap: 6px;
-        width: 100%;
-        font-size: 11px;
-        opacity: .75;
-      }
-      .badge {
-        font-size: 10px;
-        padding: 2px 6px;
-        border-radius: 999px;
-        border: 1px solid color-mix(in srgb, var(--fg) 16%, transparent);
-        background: color-mix(in srgb, var(--fg) 6%, var(--bg));
       }
       .historyItem .deleteBtn {
         display: none;
@@ -396,6 +388,53 @@
         line-height: 1.5;
         white-space: pre-wrap;
       }
+      /* Rich text rendering */
+      .rich { font-size: 13px; line-height: 1.2; }
+      .rich p { margin: 0 0 2px 0; }
+      .rich ul, .rich ol { margin: 0 0 2px 0; padding-left: 16px; }
+      .rich li { margin: 0; }
+      .rich > :last-child { margin-bottom: 0; }
+      .rich code {
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+        font-size: 12.5px;
+        background: color-mix(in srgb, var(--fg) 8%, var(--bg));
+        border: 1px solid color-mix(in srgb, var(--fg) 16%, transparent);
+        border-radius: 6px;
+        padding: 1px 3px;
+      }
+      .rich pre {
+        margin: 2px 0 4px 0;
+        padding: 4px 6px;
+        background: color-mix(in srgb, var(--fg) 8%, var(--bg));
+        border: 1px solid color-mix(in srgb, var(--fg) 16%, transparent);
+        border-radius: 8px;
+        overflow: auto;
+        position: relative;
+      }
+      .rich pre code {
+        display: block;
+        background: transparent;
+        border: none;
+        padding: 0;
+      }
+      .codeCopy {
+        position: absolute;
+        top: 6px;
+        right: 6px;
+        width: 24px;
+        height: 24px;
+        display: none;
+        align-items: center;
+        justify-content: center;
+        border-radius: 6px;
+        border: 1px solid color-mix(in srgb, var(--fg) 16%, transparent);
+        background: color-mix(in srgb, var(--bg) 92%, var(--fg) 4%);
+        color: var(--fg);
+        cursor: pointer;
+        padding: 0;
+      }
+      .rich pre:hover .codeCopy { display: inline-flex; }
+      .codeCopy svg { width: 14px; height: 14px; display: block; }
       .typingDots {
         display: inline-block;
         line-height: 1;
@@ -749,23 +788,23 @@
         <input id="historySearch" type="text" placeholder="Search chats…">
       </div>
       <div class="historyGroup" data-cat="cli">
-        <div class="historyHeader clickable"><span class="caret"></span><span>Command Line</span></div>
+        <div class="historyHeader clickable"><span class="caret"></span><span>Command Line</span><button class="groupNew" title="New chat" aria-label="New chat" style="margin-left:auto; display:inline-flex; align-items:center; justify-content:center; width:22px; height:22px; border-radius:6px; border:1px solid color-mix(in srgb, var(--fg) 16%, transparent); background: color-mix(in srgb, var(--bg) 92%, var(--fg) 4%); color: var(--fg);"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14"></path><path d="M5 12h14"></path></svg></button></div>
         <div id="history-cli" class="historyList"></div>
       </div>
       <div class="historyGroup" data-cat="snow">
-        <div class="historyHeader clickable"><span class="caret"></span><span>Snowflake CLI</span></div>
+        <div class="historyHeader clickable"><span class="caret"></span><span>Snowflake CLI</span><button class="groupNew" title="New chat" aria-label="New chat" style="margin-left:auto; display:inline-flex; align-items:center; justify-content:center; width:22px; height:22px; border-radius:6px; border:1px solid color-mix(in srgb, var(--fg) 16%, transparent); background: color-mix(in srgb, var(--bg) 92%, var(--fg) 4%); color: var(--fg);"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14"></path><path d="M5 12h14"></path></svg></button></div>
         <div id="history-snow" class="historyList"></div>
       </div>
       <div class="historyGroup" data-cat="cortex">
-        <div class="historyHeader clickable"><span class="caret"></span><span>Cortex</span></div>
+        <div class="historyHeader clickable"><span class="caret"></span><span>Cortex</span><button class="groupNew" title="New chat" aria-label="New chat" style="margin-left:auto; display:inline-flex; align-items:center; justify-content:center; width:22px; height:22px; border-radius:6px; border:1px solid color-mix(in srgb, var(--fg) 16%, transparent); background: color-mix(in srgb, var(--bg) 92%, var(--fg) 4%); color: var(--fg);"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14"></path><path d="M5 12h14"></path></svg></button></div>
         <div id="history-cortex" class="historyList"></div>
       </div>
       <div class="historyGroup" data-cat="ide">
-        <div class="historyHeader clickable"><span class="caret"></span><span>Code in IDE</span></div>
+        <div class="historyHeader clickable"><span class="caret"></span><span>Code in IDE</span><button class="groupNew" title="New chat" aria-label="New chat" style="margin-left:auto; display:inline-flex; align-items:center; justify-content:center; width:22px; height:22px; border-radius:6px; border:1px solid color-mix(in srgb, var(--fg) 16%, transparent); background: color-mix(in srgb, var(--bg) 92%, var(--fg) 4%); color: var(--fg);"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14"></path><path d="M5 12h14"></path></svg></button></div>
         <div id="history-ide" class="historyList"></div>
       </div>
       <div class="historyGroup" data-cat="projects">
-        <div class="historyHeader clickable"><span class="caret"></span><span>Projects</span></div>
+        <div class="historyHeader clickable"><span class="caret"></span><span>Projects</span><button class="groupNew" title="New chat" aria-label="New chat" style="margin-left:auto; display:inline-flex; align-items:center; justify-content:center; width:22px; height:22px; border-radius:6px; border:1px solid color-mix(in srgb, var(--fg) 16%, transparent); background: color-mix(in srgb, var(--bg) 92%, var(--fg) 4%); color: var(--fg);"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14"></path><path d="M5 12h14"></path></svg></button></div>
         <div id="history-projects" class="historyList"></div>
       </div>
       <div class="sidebarFooter">
@@ -804,14 +843,14 @@
       <div class="input" id="inputRow">
         <div id="attachPreview" class="attachPreview"></div>
         <div class="inputBox">
-          <textarea id="input" rows="2" placeholder="Type a shell command and press Enter..."></textarea>
+          <textarea id="input" rows="2" placeholder="Ask Anything"></textarea>
           <button id="mic" class="micBtn" title="Record voice" style="display:none;"></button>
           <button id="attach" class="attachBtn" title="Attach image" style="display:none;"></button>
           <button id="sendIcon" class="sendBtn" title="Send"></button>
         </div>
         <input id="fileInput" type="file" accept="image/*" style="display:none;" multiple>
       </div>
-      <div class="hint">Press Enter to send • Shift + Enter for a new line</div>
+      <div class="hint">Powered to assist you with coding</div>
       <div class="error" id="error"></div>
     </div>
     <button id="scrollDown" class="scrollDown" title="Scroll to bottom" aria-label="Scroll to bottom">↓</button>

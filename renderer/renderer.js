@@ -173,9 +173,27 @@ function render() {
     const bubble = document.createElement('div');
     bubble.className = `message ${m.role}`;
     if (m.role === 'assistant') {
-      const pre = document.createElement('pre');
-      pre.textContent = m.content;
-      bubble.appendChild(pre);
+      const rich = document.createElement('div');
+      rich.className = 'rich';
+      rich.innerHTML = renderMarkdownToHtml(m.content || '');
+      // Add copy button for each code block
+      const blocks = rich.querySelectorAll('pre');
+      blocks.forEach((pre) => {
+        const btn = document.createElement('button');
+        btn.className = 'codeCopy';
+        btn.type = 'button';
+        btn.title = 'Copy code';
+        btn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>';
+        btn.addEventListener('click', async (e) => {
+          e.stopPropagation();
+          const codeEl = pre.querySelector('code');
+          const text = codeEl ? codeEl.textContent : pre.textContent;
+          const ok = await (window.app && window.app.copyToClipboard ? window.app.copyToClipboard(text || '') : navigator.clipboard?.writeText(text || '').then(() => true).catch(() => false));
+          if (ok) showToast('Code copied');
+        });
+        pre.appendChild(btn);
+      });
+      bubble.appendChild(rich);
       // typing indicator for non-streaming mode
       // if message is empty and we're running, show dots
       if (!m.content && isRunning) {
@@ -334,22 +352,9 @@ function renderHistory() {
     // Full title in tooltip; compact row shows ellipsis
     const fullTitle = s.title || 'Untitled';
     item.title = fullTitle;
-    const left = document.createElement('div');
-    left.className = 'left';
-    const titleEl = document.createElement('div');
+    const titleEl = document.createElement('span');
     titleEl.className = 'title';
     titleEl.textContent = fullTitle;
-    const meta = document.createElement('div');
-    meta.className = 'meta';
-    const badge = document.createElement('span');
-    badge.className = 'badge';
-    badge.textContent = (s.category || defaultCategory);
-    const time = document.createElement('span');
-    time.textContent = timeAgo(s.updatedAt || s.createdAt);
-    meta.appendChild(badge);
-    meta.appendChild(time);
-    left.appendChild(titleEl);
-    left.appendChild(meta);
     const delBtn = document.createElement('button');
     delBtn.className = 'deleteBtn';
     delBtn.type = 'button';
@@ -359,7 +364,7 @@ function renderHistory() {
       e.stopPropagation();
       deleteSession(s.id);
     });
-    item.appendChild(left);
+    item.appendChild(titleEl);
     item.appendChild(delBtn);
 
     item.addEventListener('click', () => {
@@ -486,6 +491,59 @@ function showToast(msg) {
   toastEl.textContent = String(msg || '');
   toastEl.style.display = 'block';
   setTimeout(() => { toastEl.style.display = 'none'; }, 1800);
+}
+
+// Lightweight Markdown renderer (bold, inline code, code blocks, bullets)
+function renderMarkdownToHtml(text) {
+  if (!text) return '';
+  const escapeHtml = (s) => s.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  // First escape everything
+  let src = String(text);
+  // Code blocks: ```lang?\n...```
+  src = src.replace(/```(\w+)?\n([\s\S]*?)```/g, (_, lang, code) => {
+    const safe = escapeHtml(code);
+    const cls = lang ? ` class="lang-${escapeHtml(lang)}"` : '';
+    return `<pre><code${cls}>${safe}</code></pre>`;
+  });
+  // Inline code: `code`
+  src = src.replace(/`([^`]+)`/g, (_, code) => `<code>${escapeHtml(code)}</code>`);
+  // Bold: **text**
+  src = src.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+  // Lists: lines starting with "- " → <ul><li>...</li></ul>
+  const lines = src.split(/\r?\n/);
+  const out = [];
+  let inList = false;
+  let paraBuf = [];
+  function flushPara() {
+    if (!paraBuf.length) return;
+    const text = paraBuf.join(' ').trim();
+    if (text) out.push('<p>' + text + '</p>');
+    paraBuf = [];
+  }
+  for (let i = 0; i < lines.length; i++) {
+    const raw = lines[i];
+    const line = raw;
+    if (/^\s*-\s+/.test(line)) {
+      flushPara();
+      if (!inList) { out.push('<ul>'); inList = true; }
+      out.push('<li>' + line.replace(/^\s*-\s+/, '') + '</li>');
+      continue;
+    }
+    if (inList) {
+      // End list on first non-list line (including blank)
+      out.push('</ul>');
+      inList = false;
+    }
+    if (line.trim().length === 0) {
+      // Blank line → paragraph break
+      flushPara();
+    } else {
+      paraBuf.push(line);
+    }
+  }
+  if (inList) out.push('</ul>');
+  flushPara();
+  return out.join('\n');
 }
 
 function findPrevUserContent(idx) {
@@ -1074,6 +1132,21 @@ function initFolders() {
           CATEGORY_CLI;
         saveFoldersState(groups);
       });
+      const addBtn = g.querySelector('.groupNew');
+      if (addBtn) {
+        addBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const category =
+            (cat === 'snow') ? CATEGORY_SNOW :
+            (cat === 'cortex') ? CATEGORY_CORTEX :
+            (cat === 'ide') ? CATEGORY_IDE :
+            (cat === 'projects') ? CATEGORY_PROJECTS :
+            CATEGORY_CLI;
+          createSession(category);
+          showChat();
+          inputEl.focus();
+        });
+      }
     }
   }
 }
