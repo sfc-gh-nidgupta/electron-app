@@ -28,6 +28,23 @@ const conversation = [];
 let isRunning = false;
 let pendingAttachments = [];
 let isHome = true;
+let providerName = 'shell';
+let wsUrl = '';
+let httpSessionUrl = '';
+let wsProtocols = [];
+let activeWs = null;
+let activeWsUrl = '';
+let remoteSessionWsUrl = '';
+let remoteSessionId = '';
+const ephemeralByMessage = new WeakMap();
+
+function resetWsState() {
+  try { if (activeWs) activeWs.close(); } catch {}
+  activeWs = null;
+  activeWsUrl = '';
+  remoteSessionWsUrl = '';
+  remoteSessionId = '';
+}
 
 // Categories
 const CATEGORY_CLI = 'Command Line';
@@ -87,6 +104,8 @@ function createSession(categoryOverride) {
   const session = { id, title: 'New chat', createdAt: now, updatedAt: now, category: cat, messages: [] };
   sessions.unshift(session);
   currentSessionId = id;
+  // Reset any existing websocket when starting a brand new chat
+  resetWsState();
   conversation.splice(0, conversation.length);
   renderHistory();
   render();
@@ -148,6 +167,29 @@ function render() {
       const pre = document.createElement('pre');
       pre.textContent = m.content;
       bubble.appendChild(pre);
+      const eph = ephemeralByMessage.get(m) || [];
+      if (eph.length) {
+        const row = document.createElement('div');
+        row.className = 'ephemeralRow';
+        eph.forEach(e => {
+          const span = document.createElement('span');
+          span.className = 'ephemeral';
+          span.textContent = e.label;
+          row.appendChild(span);
+        });
+        bubble.appendChild(row);
+      }
+      if (Array.isArray(m.chips) && m.chips.length) {
+        const chips = document.createElement('div');
+        chips.className = 'chips';
+        m.chips.forEach(label => {
+          const c = document.createElement('span');
+          c.className = 'chip';
+          c.textContent = label;
+          chips.appendChild(c);
+        });
+        bubble.appendChild(chips);
+      }
     } else {
       bubble.textContent = m.content;
     }
@@ -232,6 +274,8 @@ function renderHistory() {
     item.appendChild(delBtn);
 
     item.addEventListener('click', () => {
+      // Switching sessions: reset per-session websocket state
+      resetWsState();
       currentSessionId = s.id;
       conversation.splice(0, conversation.length, ...s.messages);
       showChat();
@@ -274,20 +318,28 @@ async function send() {
   renderAttachPreview();
 
   try {
-    const model = modelEl ? (modelEl.value.trim() || undefined) : undefined;
-    const result = await window.api.sendChat(conversation, model);
-    const content = result?.content ?? '';
-    conversation.push({ role: 'assistant', content });
-    const s2 = getCurrentSession();
-    if (s2) {
-      s2.messages = [...conversation];
-      s2.updatedAt = Date.now();
-      saveSessions();
+    if (isWsProvider()) {
+      // Start streaming without blocking the input UI
+      sendViaWebSocket().catch(err => {
+        errorEl.textContent = err?.message || String(err);
+      });
+    } else {
+      const model = modelEl ? (modelEl.value.trim() || undefined) : undefined;
+      const result = await window.api.sendChat(conversation, model);
+      const content = result?.content ?? '';
+      conversation.push({ role: 'assistant', content });
+      const s2 = getCurrentSession();
+      if (s2) {
+        s2.messages = [...conversation];
+        s2.updatedAt = Date.now();
+        saveSessions();
+      }
     }
   } catch (err) {
     errorEl.textContent = err?.message || String(err);
   } finally {
     render();
+    // Re-enable input immediately; WebSocket continues streaming in background
     setRunning(false);
     inputEl.focus();
   }
@@ -510,6 +562,7 @@ async function detectDefaultCategory() {
   try {
     const res = await window.app?.getProvider?.();
     const p = (res?.provider || 'shell').toLowerCase();
+    providerName = p;
     if (p === 'snow' || p === 'snowflake') return CATEGORY_SNOW;
     if (p === 'openai') return CATEGORY_CORTEX;
     return CATEGORY_CLI;
@@ -522,6 +575,13 @@ async function initApp() {
   initTheme();
   defaultCategory = await detectDefaultCategory();
   selectedCategory = defaultCategory;
+  try {
+    const cfg = await window.app?.getConfig?.();
+    if (cfg?.provider) providerName = String(cfg.provider).toLowerCase();
+    if (cfg?.wsUrl) wsUrl = String(cfg.wsUrl);
+    if (cfg?.httpSessionUrl) httpSessionUrl = String(cfg.httpSessionUrl);
+    if (Array.isArray(cfg?.wsProtocols)) wsProtocols = cfg.wsProtocols.slice();
+  } catch {}
   initFolders();
   ensureSession();
   renderHistory();
@@ -538,6 +598,293 @@ async function initApp() {
 }
 
 initApp();
+
+function isWsProvider() {
+  const p = (providerName || '').toLowerCase();
+  return p === 'ws' || p === 'websocket' || p === 'cortexws' || p === 'cortex_ws' || p === 'cortex';
+}
+
+async function sendViaWebSocket() {
+  return new Promise((resolve, reject) => {
+    // Strategy:
+    // 1) If httpSessionUrl exists, create a session first and use returned websocket_url.
+    // 2) Else, fall back to configured wsUrl.
+    const createSessionIfPossible = async () => {
+      if (!httpSessionUrl) return null;
+      try {
+        const lastUser = [...conversation].reverse().find(m => m.role === 'user')?.content || '';
+        const payload = { messages: [{ role: 'user', content: lastUser }] };
+        const res = await fetch(httpSessionUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        if (!res.ok) {
+          const t = await res.text().catch(() => '');
+          throw new Error(`Session create failed: ${res.status} ${t}`);
+        }
+        const json = await res.json();
+        if (json?.session_id) remoteSessionId = String(json.session_id);
+        if (json?.websocket_url) remoteSessionWsUrl = String(json.websocket_url);
+        return remoteSessionWsUrl || null;
+      } catch (e) {
+        console.error('Session create error', e);
+        errorEl.textContent = e?.message || 'Failed to create session';
+        return null;
+      }
+    };
+
+    let assistantIndex = -1;
+    let closed = false;
+    let ws;
+    let targetUrl = '';
+    let queuedInput = '';
+
+    const openSocket = async () => {
+      // If we already have an open socket, reuse it (don't recreate session)
+      if (activeWs && activeWs.readyState === WebSocket.OPEN) {
+        ws = activeWs;
+        targetUrl = activeWsUrl || 'ws://127.0.0.1:8765';
+        try { console.log('WS reuse open', targetUrl); } catch {}
+        // Stream into a fresh assistant bubble and rebind message handler so chunks
+        // append to THIS assistant message instead of the first one.
+        assistantIndex = conversation.push({ role: 'assistant', content: '' }) - 1;
+        render();
+        ws.onmessage = (evt) => {
+          let data = evt.data;
+          let textChunk = '';
+          try {
+            const parsed = JSON.parse(data);
+            if (parsed && typeof parsed === 'object') {
+              if (parsed.type === 'output') {
+                const inner = parsed.content;
+                if (typeof inner === 'string') {
+                  try {
+                    const innerObj = JSON.parse(inner);
+                    if (innerObj?.type === 'event') {
+                      const d = innerObj.data || {};
+                      if (d.type === 'text' && typeof d.content === 'string') {
+                        textChunk = d.content;
+                      } else if (d.type === 'status') {
+                        const sVal = String(d.status || d.content || '').toLowerCase();
+                        if (sVal.includes('thinking')) addEphemeral('thinking');
+                        else if (sVal.includes('completed') || sVal.includes('done')) addEphemeral('completed');
+                        else {
+                          const m = String(d.content || '').match(/^([\w\-]+):\s*running/i);
+                          if (m) addEphemeral(m[1]);
+                        }
+                        return;
+                      }
+                    } else {
+                      textChunk = inner;
+                    }
+                  } catch {
+                    textChunk = inner;
+                  }
+                }
+              } else if (parsed.type === 'text' && typeof parsed.content === 'string') {
+                textChunk = parsed.content;
+              }
+            }
+          } catch {
+            textChunk = typeof data === 'string' ? data : '';
+          }
+          if (textChunk) handleTextOnly(textChunk);
+        };
+        const lastUser = [...conversation].reverse().find(m => m.role === 'user')?.content || '';
+        const payload = { type: 'input', content: lastUser };
+        try { ws.send(JSON.stringify(payload)); } catch (err) { console.error('WS send failed', err); }
+        return;
+      }
+
+      // Prefer existing session websocket if we have one
+      let sessionUrl = remoteSessionWsUrl;
+      if (!sessionUrl) {
+        sessionUrl = await createSessionIfPossible();
+      }
+      targetUrl = sessionUrl || wsUrl || 'ws://127.0.0.1:8765';
+      try {
+        try { console.log('WS connecting', targetUrl); } catch {}
+        ws = (wsProtocols && wsProtocols.length) ? new WebSocket(targetUrl, wsProtocols) : new WebSocket(targetUrl);
+        activeWs = ws;
+        activeWsUrl = targetUrl;
+      } catch (e) {
+        errorEl.textContent = `Unable to open WebSocket: ${targetUrl}`;
+        return reject(e);
+      }
+
+      ws.onopen = () => {
+        try { console.log('WS open', targetUrl); } catch {}
+        // Create a placeholder assistant message to stream into
+        assistantIndex = conversation.push({ role: 'assistant', content: '' }) - 1;
+        const s = getCurrentSession();
+        if (s) {
+          s.messages = [...conversation];
+          s.updatedAt = Date.now();
+          saveSessions();
+        }
+        render();
+        // Queue the latest user input; send after connection_established
+        queuedInput = [...conversation].reverse().find(m => m.role === 'user')?.content || '';
+        // Fallback: if connection_established doesn't arrive soon, send anyway
+        setTimeout(() => {
+          if (queuedInput) {
+            try { ws.send(JSON.stringify({ type: 'input', content: queuedInput })); queuedInput = ''; } catch (err) { console.error('WS send failed (timeout)', err); }
+          }
+        }, 2000);
+      };
+      ws.onmessage = (evt) => {
+        let data = evt.data;
+        try { console.log('WS message', data); } catch {}
+        let textChunk = '';
+        // Try to parse various shapes shown in the sample logs
+        try {
+          const parsed = JSON.parse(data);
+          if (parsed && typeof parsed === 'object') {
+            if (parsed.type === 'connection_established') {
+              if (queuedInput) {
+                try { ws.send(JSON.stringify({ type: 'input', content: queuedInput })); } catch (err) { console.error('WS send failed', err); }
+                queuedInput = '';
+              }
+            }
+            if (parsed.type === 'output') {
+              const inner = parsed.content;
+              if (typeof inner === 'string') {
+                try {
+                  const innerObj = JSON.parse(inner);
+                  if (innerObj?.type === 'event') {
+                    const d = innerObj.data || {};
+                    if (d.type === 'text' && typeof d.content === 'string') {
+                      textChunk = d.content;
+                    } else if (d.type === 'status') {
+                      const sVal = String(d.status || d.content || '').toLowerCase();
+                      if (sVal.includes('thinking')) addEphemeral('thinking');
+                      else if (sVal.includes('completed') || sVal.includes('done')) addEphemeral('completed');
+                      else {
+                        const m = String(d.content || '').match(/^([\w\-]+):\s*running/i);
+                        if (m) addEphemeral(m[1]);
+                      }
+                      // Do not treat status text as answer
+                      textChunk = '';
+                    }
+                  } else {
+                    textChunk = inner;
+                  }
+                } catch {
+                  textChunk = inner;
+                }
+              }
+            } else if (parsed.type === 'text' && typeof parsed.content === 'string') {
+              textChunk = parsed.content;
+            }
+          }
+        } catch {
+          // Not JSON; treat as raw chunk
+          textChunk = typeof data === 'string' ? data : '';
+        }
+        if (textChunk) handleTextOnly(textChunk);
+      };
+      ws.onerror = (e) => {
+        if (!closed) {
+          errorEl.textContent = `WebSocket error: ${targetUrl}`;
+          console.error('WebSocket error', e);
+        }
+      };
+      ws.onclose = (evt) => {
+        closed = true;
+        if (evt && evt.code !== 1000) {
+          const reason = (evt.reason && String(evt.reason).trim()) || 'connection closed';
+          errorEl.textContent = `WebSocket closed (${evt.code}): ${reason} @ ${targetUrl}`;
+          console.error('WebSocket close', evt.code, reason);
+        }
+        if (activeWs === ws) {
+          activeWs = null;
+          activeWsUrl = '';
+        }
+        resolve();
+      };
+    };
+
+    openSocket();
+
+    function appendTextChunk(chunk) {
+      if (assistantIndex < 0) return;
+      const msg = conversation[assistantIndex];
+      msg.content = (msg.content || '') + chunk;
+      const s = getCurrentSession();
+      if (s) {
+        s.messages = [...conversation];
+        s.updatedAt = Date.now();
+        saveSessions();
+      }
+      render();
+    }
+
+    function addChip(label) {
+      if (assistantIndex < 0 || !label) return;
+      const msg = conversation[assistantIndex];
+      if (!Array.isArray(msg.chips)) msg.chips = [];
+      const clean = String(label).trim();
+      if (!clean) return;
+      // Avoid immediate duplicates
+      if (msg.chips[msg.chips.length - 1] === clean) return;
+      msg.chips.push(clean);
+      const s = getCurrentSession();
+      if (s) {
+        s.messages = [...conversation];
+        s.updatedAt = Date.now();
+        saveSessions();
+      }
+      render();
+    }
+
+    function addEphemeral(label) {
+      if (assistantIndex < 0 || !label) return;
+      const msg = conversation[assistantIndex];
+      const clean = String(label || '').trim();
+      if (!clean) return;
+      let arr = ephemeralByMessage.get(msg);
+      if (!arr) {
+        arr = [];
+        ephemeralByMessage.set(msg, arr);
+      }
+      const id = uid();
+      arr.push({ id, label: clean, at: Date.now() });
+      try { console.log('ephemeral:', clean); } catch {}
+      render();
+      setTimeout(() => {
+        const list = ephemeralByMessage.get(msg);
+        if (!list) return;
+        const idx = list.findIndex(x => x.id === id);
+        if (idx !== -1) {
+          list.splice(idx, 1);
+          render();
+        }
+      }, 4200);
+    }
+
+    // Append text chunks, but siphon known status strings into ephemeral pills
+    function handleTextOnly(raw) {
+      let s = String(raw ?? '');
+      const rules = [
+        { re: /Agent is thinking\.\.\./gi, label: 'thinking' },
+        { re: /Agent response completed/gi, label: 'completed' },
+        { re: /\b([\w\-]+):\s*running\b/gi, labelFrom: (m) => m[1] },
+        { re: /\bstdio_message_loop\b/gi, label: 'stdio' }
+      ];
+      let consumed = false;
+      rules.forEach(r => {
+        const matches = [...s.matchAll(r.re)];
+        if (matches.length) {
+          consumed = true;
+          matches.forEach(m => addEphemeral(r.labelFrom ? r.labelFrom(m) : r.label));
+          s = s.replace(r.re, '');
+        }
+      });
+      if (s) appendTextChunk(s);
+    }
+  });
+}
 
 function initFolders() {
   const groups = Array.from(document.querySelectorAll('.historyGroup'));

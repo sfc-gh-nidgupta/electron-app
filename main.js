@@ -13,7 +13,11 @@ const __dirname = dirname(__filename);
 let mainWindow;
 
 function getProvider() {
-  return (process.env.PROVIDER || 'shell').toLowerCase();
+  const fromEnv = (process.env.PROVIDER || '').toLowerCase();
+  if (fromEnv) return fromEnv;
+  // Prefer WS by default for local streaming if not explicitly set
+  if (process.env.WS_URL) return 'ws';
+  return 'ws';
 }
 
 function createMainWindow() {
@@ -131,6 +135,20 @@ ipcMain.handle('audio:transcribe', async (_event, payload) => {
   const json = await response.json();
   const text = json?.text || '';
   return { text };
+});
+
+ipcMain.handle('config:get', async () => {
+  const protoEnv = process.env.WS_PROTOCOLS || process.env.WS_SUBPROTOCOLS || '';
+  const wsProtocols = protoEnv
+    .split(',')
+    .map(s => String(s || '').trim())
+    .filter(Boolean);
+  return {
+    provider: getProvider(),
+    wsUrl: process.env.WS_URL || 'ws://127.0.0.1:8765/api/sessions/ws',
+    httpSessionUrl: process.env.HTTP_SESSION_URL || 'http://127.0.0.1:8765/api/sessions',
+    wsProtocols
+  };
 });
 
 
